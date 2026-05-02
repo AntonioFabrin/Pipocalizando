@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator,
-  RefreshControl, TouchableOpacity, Alert, ScrollView
+  RefreshControl, TouchableOpacity, Alert, ScrollView,
+  Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { getOrders, updateOrderStatus, getProducts, getMovies } from '../services/api';
+import { getOrders, updateOrderStatus, getProducts, getMovies, createProduct, updateProduct, deleteProduct } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
 
@@ -27,6 +28,81 @@ export default function AdminScreen({ navigation }: any) {
   const [movies, setMovies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // ── Estado do modal de produto ────────────────────────
+  const EMPTY_PRODUCT = { name: '', price: '', stock: '', description: '', image_url: '', category_name: '' };
+  const [productModal, setProductModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [productForm, setProductForm] = useState(EMPTY_PRODUCT);
+  const [savingProduct, setSavingProduct] = useState(false);
+
+  const openCreateProduct = () => {
+    setEditingProduct(null);
+    setProductForm(EMPTY_PRODUCT);
+    setProductModal(true);
+  };
+
+  const openEditProduct = (p: any) => {
+    setEditingProduct(p);
+    setProductForm({
+      name: p.name || '',
+      price: String(p.price || ''),
+      stock: String(p.stock || ''),
+      description: p.description || '',
+      image_url: p.image_url || '',
+      category_name: p.category_name || '',
+    });
+    setProductModal(true);
+  };
+
+  const handleSaveProduct = async () => {
+    if (!productForm.name.trim()) { Alert.alert('Atenção', 'Nome é obrigatório.'); return; }
+    const price = parseFloat(productForm.price.replace(',', '.'));
+    if (isNaN(price) || price <= 0) { Alert.alert('Atenção', 'Preço inválido.'); return; }
+    const stock = parseInt(productForm.stock) || 0;
+    setSavingProduct(true);
+    try {
+      const payload = {
+        name: productForm.name.trim(),
+        price,
+        stock,
+        description: productForm.description.trim(),
+        image_url: productForm.image_url.trim(),
+      };
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, payload);
+      } else {
+        await createProduct(payload);
+      }
+      setProductModal(false);
+      fetchAll();
+    } catch (e: any) {
+      Alert.alert('Erro', e?.response?.data?.message || 'Erro ao salvar produto.');
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
+  const handleDeleteProduct = (p: any) => {
+    Alert.alert(
+      'Excluir produto',
+      `Tem certeza que deseja excluir "${p.name}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir', style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteProduct(p.id);
+              fetchAll();
+            } catch (e: any) {
+              Alert.alert('Erro', e?.response?.data?.message || 'Erro ao excluir.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const fetchAll = useCallback(async () => {
     try {
@@ -169,29 +245,44 @@ export default function AdminScreen({ navigation }: any) {
 
           {/* Tab: Produtos */}
           {tab === 'products' && (
-            products.length === 0
-              ? <View style={styles.empty}><Text style={styles.emptyText}>Nenhum produto cadastrado.</Text></View>
-              : products.map((p: any) => (
-                  <View key={p.id} style={styles.productCard}>
-                    <View style={styles.productEmoji}>
-                      <Text style={{ fontSize: 28 }}>
-                        {p.category_name === 'Pipoca' ? '🍿' : p.category_name === 'Bebidas' ? '🥤' : p.category_name === 'Combos' ? '🎬' : '🍬'}
-                      </Text>
-                    </View>
-                    <View style={styles.productInfo}>
-                      <Text style={styles.productName}>{p.name}</Text>
-                      <Text style={styles.productCat}>{p.category_name}</Text>
-                    </View>
-                    <View style={styles.productRight}>
-                      <Text style={styles.productPrice}>R$ {Number(p.price).toFixed(2)}</Text>
-                      <View style={[styles.stockBadge, { backgroundColor: p.stock <= 5 ? COLORS.warning + '33' : COLORS.success + '22' }]}>
-                        <Text style={[styles.stockText, { color: p.stock <= 5 ? COLORS.warning : COLORS.success }]}>
-                          {p.stock} un.
+            <>
+              {/* Botão Novo Produto */}
+              <TouchableOpacity style={styles.newProductBtn} onPress={openCreateProduct}>
+                <Text style={styles.newProductBtnText}>+ Novo produto</Text>
+              </TouchableOpacity>
+              {products.length === 0
+                ? <View style={styles.empty}><Text style={styles.emptyText}>Nenhum produto cadastrado.</Text></View>
+                : products.map((p: any) => (
+                    <View key={p.id} style={styles.productCard}>
+                      <View style={styles.productEmoji}>
+                        <Text style={{ fontSize: 28 }}>
+                          {p.category_name === 'Pipoca' ? '🍿' : p.category_name === 'Bebidas' ? '🥤' : p.category_name === 'Combos' ? '🎦' : '🍬'}
                         </Text>
                       </View>
+                      <View style={styles.productInfo}>
+                        <Text style={styles.productName}>{p.name}</Text>
+                        <Text style={styles.productCat}>{p.category_name}</Text>
+                      </View>
+                      <View style={styles.productRight}>
+                        <Text style={styles.productPrice}>R$ {Number(p.price).toFixed(2)}</Text>
+                        <View style={[styles.stockBadge, { backgroundColor: p.stock <= 5 ? COLORS.warning + '33' : COLORS.success + '22' }]}>
+                          <Text style={[styles.stockText, { color: p.stock <= 5 ? COLORS.warning : COLORS.success }]}>
+                            {p.stock} un.
+                          </Text>
+                        </View>
+                        <View style={styles.productActions}>
+                          <TouchableOpacity style={styles.actionBtn} onPress={() => openEditProduct(p)}>
+                            <Text style={styles.actionBtnText}>✏️</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={[styles.actionBtn, styles.actionBtnDanger]} onPress={() => handleDeleteProduct(p)}>
+                            <Text style={styles.actionBtnText}>🗑️</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                ))
+                  ))
+              }
+            </>
           )}
 
           {/* Tab: Sessões */}
@@ -224,6 +315,56 @@ export default function AdminScreen({ navigation }: any) {
 
         </View>
       </ScrollView>
+
+      {/* ── Modal Criar/Editar Produto ── */}
+      <Modal visible={productModal} animationType="slide" transparent onRequestClose={() => setProductModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalBox}>
+              <ScrollView keyboardShouldPersistTaps="handled">
+                <Text style={styles.modalTitle}>{editingProduct ? 'Editar produto' : 'Novo produto'}</Text>
+
+                {([
+                  { key: 'name',        label: 'Nome *',          placeholder: 'Ex: Pipoca Grande', keyboard: 'default' as const },
+                  { key: 'price',       label: 'Preço (R$) *',    placeholder: '12.90',             keyboard: 'decimal-pad' as const },
+                  { key: 'stock',       label: 'Estoque (un.)',   placeholder: '50',               keyboard: 'number-pad' as const },
+                  { key: 'description', label: 'Descrição',       placeholder: 'Descrição do produto', keyboard: 'default' as const },
+                  { key: 'image_url',   label: 'URL da imagem',   placeholder: 'https://...',       keyboard: 'url' as const },
+                ] as const).map(field => (
+                  <View key={field.key} style={styles.modalField}>
+                    <Text style={styles.modalLabel}>{field.label}</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder={field.placeholder}
+                      placeholderTextColor={COLORS.textMuted}
+                      value={productForm[field.key]}
+                      onChangeText={t => setProductForm(prev => ({ ...prev, [field.key]: t }))}
+                      keyboardType={field.keyboard}
+                      multiline={field.key === 'description'}
+                      numberOfLines={field.key === 'description' ? 3 : 1}
+                      editable={!savingProduct}
+                    />
+                  </View>
+                ))}
+
+                <TouchableOpacity
+                  style={[styles.modalSaveBtn, savingProduct && { opacity: 0.6 }]}
+                  onPress={handleSaveProduct}
+                  disabled={savingProduct}
+                >
+                  {savingProduct
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.modalSaveBtnText}>{editingProduct ? 'Salvar alterações' : 'Criar produto'}</Text>
+                  }
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setProductModal(false)} disabled={savingProduct}>
+                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -285,4 +426,22 @@ const styles = StyleSheet.create({
   emptyText: { color: COLORS.textSecondary, fontSize: 15 },
   goBtn: { marginTop: SPACING.md, backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingHorizontal: SPACING.lg, paddingVertical: 10 },
   goBtnText: { color: '#fff', fontWeight: 'bold' },
+  // Produto CRUD
+  newProductBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 11, alignItems: 'center', marginBottom: SPACING.sm },
+  newProductBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  productActions: { flexDirection: 'row', gap: 6, marginTop: 4 },
+  actionBtn: { width: 32, height: 32, backgroundColor: '#1a3a5c', borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
+  actionBtnDanger: { backgroundColor: '#3B0000' },
+  actionBtnText: { fontSize: 15 },
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
+  modalBox: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.lg, maxHeight: '90%' },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.text, marginBottom: SPACING.lg },
+  modalField: { marginBottom: SPACING.md },
+  modalLabel: { fontSize: 13, color: COLORS.textSecondary, marginBottom: 6 },
+  modalInput: { backgroundColor: '#111', borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, paddingVertical: 12, color: COLORS.text, fontSize: 15, borderWidth: 1, borderColor: '#333' },
+  modalSaveBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', marginTop: SPACING.sm },
+  modalSaveBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  modalCancelBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 4 },
+  modalCancelText: { color: COLORS.textMuted, fontSize: 14 },
 });

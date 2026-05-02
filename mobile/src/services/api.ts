@@ -85,6 +85,12 @@ export const getProducts = () =>
   api.get('/products');
 export const getProductById = (id: number) =>
   api.get(`/products/${id}`);
+export const createProduct = (data: object) =>
+  api.post('/products', data);
+export const updateProduct = (id: number, data: object) =>
+  api.put(`/products/${id}`, data);
+export const deleteProduct = (id: number) =>
+  api.delete(`/products/${id}`);
 
 // ── Pedidos ──────────────────────────────────────────────
 export const createOrder = (data: object) =>

@@ -138,6 +138,14 @@ export default function LoginScreen({ navigation }: any) {
           >
             <Text style={styles.secondaryButtonText}>Criar nova conta</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.forgotButton}
+            onPress={() => navigation.navigate('ForgotPassword')}
+            disabled={loading}
+          >
+            <Text style={styles.forgotButtonText}>Esqueci minha senha</Text>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.footer}>🎥 Sua experiência de cinema começa aqui</Text>
@@ -195,5 +203,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.primary,
   },
   secondaryButtonText: { color: COLORS.primary, fontSize: 16, fontWeight: 'bold' },
+  forgotButton: { paddingVertical: 12, alignItems: 'center', marginTop: SPACING.sm },
+  forgotButtonText: { color: COLORS.textMuted, fontSize: 14 },
   footer: { textAlign: 'center', color: COLORS.textMuted, fontSize: 13, marginTop: SPACING.lg },
 });

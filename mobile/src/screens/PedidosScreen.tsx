@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl, Modal, ScrollView, Alert
+  ActivityIndicator, RefreshControl, Modal, ScrollView, Alert, Image
 } from 'react-native';
 import { useCart } from '../context/CartContext';
 import { getOrders, createOrder } from '../services/api';
@@ -282,6 +282,11 @@ export default function PedidosScreen({ navigation }: any) {
                     <View style={styles.ticketBox}>
                       <Text style={styles.ticketBoxLabel}>🎫 Código do Ticket</Text>
                       <Text style={styles.ticketBoxCode}>{selectedOrder.ticket_code}</Text>
+                      {/* QR Code via URL – funciona com internet */}
+                      <Image
+                        source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(selectedOrder.ticket_code)}&bgcolor=E50914&color=ffffff&margin=4` }}
+                        style={{ width: 100, height: 100, marginTop: 8, borderRadius: 8 }}
+                      />
                       <Text style={styles.ticketBoxHint}>Apresente na retirada</Text>
                     </View>
                     {[
