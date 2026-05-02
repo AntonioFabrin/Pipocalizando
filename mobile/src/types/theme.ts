@@ -11,7 +11,7 @@ export const COLORS = {
   gold: '#FFD700',         // Dourado (estrelas)
   success: '#00C853',      // Verde
   warning: '#FFB300',      // Amarelo
-  error: '#E50914',        // Vermelho erro
+  error: '#CC0000',        // Vermelho erro (diferente do primary!)
   border: '#333333',       // Borda
   card: '#1E1E1E',         // Card
 };

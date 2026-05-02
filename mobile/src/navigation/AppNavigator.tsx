@@ -9,53 +9,124 @@ import { COLORS } from '../types/theme';
 
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
+import MoviesScreen from '../screens/MoviesScreen';
 import HomeScreen from '../screens/HomeScreen';
-import CartScreen from '../screens/CartScreen';
-import OrdersScreen from '../screens/OrdersScreen';
+import PedidosScreen from '../screens/PedidosScreen';
+import ContaScreen from '../screens/ContaScreen';
 import OrderSuccessScreen from '../screens/OrderSuccessScreen';
+
+// Staff
 import ScannerScreen from '../screens/ScannerScreen';
 import AdminScreen from '../screens/AdminScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Tabs para customer
+// ─── 4 tabs do cliente ───────────────────────────────────
 function CustomerTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: COLORS.surface, borderTopColor: COLORS.border },
+        tabBarStyle: { backgroundColor: COLORS.surface, borderTopColor: '#222', height: 60, paddingBottom: 8 },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textMuted,
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Cardápio', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>🍿</Text> }} />
-      <Tab.Screen name="Cart" component={CartScreen} options={{ title: 'Carrinho', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>🛒</Text> }} />
-      <Tab.Screen name="Orders" component={OrdersScreen} options={{ title: 'Pedidos', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>📋</Text> }} />
+      <Tab.Screen
+        name="Sessoes"
+        component={MoviesScreen}
+        options={{
+          title: 'Sessões',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🎬</Text>,
+        }}
+      />
+      <Tab.Screen
+        name="Cardapio"
+        component={HomeScreen}
+        options={{
+          title: 'Cardápio',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🍿</Text>,
+        }}
+      />
+      <Tab.Screen
+        name="Pedidos"
+        component={PedidosScreen}
+        options={{
+          title: 'Pedidos',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🛒</Text>,
+        }}
+      />
+      <Tab.Screen
+        name="Conta"
+        component={ContaScreen}
+        options={{
+          title: 'Conta',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>👤</Text>,
+        }}
+      />
     </Tab.Navigator>
   );
 }
 
-// Tabs para seller/admin
+// ─── Tabs do vendedor/admin ───────────────────────────────
 function SellerTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: COLORS.surface, borderTopColor: COLORS.border },
+        tabBarStyle: { backgroundColor: COLORS.surface, borderTopColor: '#222', height: 60, paddingBottom: 8 },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textMuted,
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Cardápio', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>🍿</Text> }} />
-      <Tab.Screen name="Scanner" component={ScannerScreen} options={{ title: 'Scanner', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>🎫</Text> }} />
-      <Tab.Screen name="Admin" component={AdminScreen} options={{ title: 'Painel', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>⚙️</Text> }} />
-      <Tab.Screen name="Orders" component={OrdersScreen} options={{ title: 'Pedidos', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>📋</Text> }} />
+      <Tab.Screen
+        name="Sessoes"
+        component={MoviesScreen}
+        options={{
+          title: 'Sessões',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🎬</Text>,
+        }}
+      />
+      <Tab.Screen
+        name="Cardapio"
+        component={HomeScreen}
+        options={{
+          title: 'Cardápio',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🍿</Text>,
+        }}
+      />
+      <Tab.Screen
+        name="Scanner"
+        component={ScannerScreen}
+        options={{
+          title: 'Scanner',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🎫</Text>,
+        }}
+      />
+      <Tab.Screen
+        name="Painel"
+        component={AdminScreen}
+        options={{
+          title: 'Painel',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>⚙️</Text>,
+        }}
+      />
+      <Tab.Screen
+        name="Conta"
+        component={ContaScreen}
+        options={{
+          title: 'Conta',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>👤</Text>,
+        }}
+      />
     </Tab.Navigator>
   );
 }
 
+// ─── Navigator raiz ───────────────────────────────────────
 export default function AppNavigator() {
   const { user, loading } = useAuth();
 
@@ -65,7 +136,7 @@ export default function AppNavigator() {
     </View>
   );
 
-  const isStaff = user?.role === 'super_admin' || user?.role === 'manager' || user?.role === 'seller';
+  const isStaff = ['super_admin', 'manager', 'seller'].includes(user?.role || '');
 
   return (
     <NavigationContainer>
