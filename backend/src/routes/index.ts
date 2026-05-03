@@ -14,9 +14,12 @@ const STAFF = ['super_admin', 'manager', 'seller'];
 const ADMIN = ['super_admin', 'manager'];
 
 // ── AUTH ─────────────────────────────────────────────────
-router.post('/auth/register', auth.register);
-router.post('/auth/login',    auth.login);
-router.get('/auth/profile',   authMiddleware, auth.getProfile);
+router.post('/auth/register',          auth.register);
+router.post('/auth/login',             auth.login);
+router.get ('/auth/profile',           authMiddleware, auth.getProfile);
+router.post('/auth/forgot-password',   auth.forgotPassword);
+router.post('/auth/verify-reset-code', auth.verifyResetCode);
+router.post('/auth/reset-password',    auth.resetPassword);
 
 // ── USUÁRIOS ─────────────────────────────────────────────
 router.get   ('/users',     authMiddleware, roleMiddleware(...ADMIN), users.getAll);

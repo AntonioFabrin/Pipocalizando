@@ -4,7 +4,7 @@ import {
   ActivityIndicator, RefreshControl, Modal, ScrollView, Alert, Image
 } from 'react-native';
 import { useCart } from '../context/CartContext';
-import { getOrders, createOrder } from '../services/api';
+import { getOrders, createOrder, getMovieSessions } from '../services/api';
 import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
 
 type TabType = 'cart' | 'history';
@@ -41,6 +41,9 @@ export default function PedidosScreen({ navigation }: any) {
   const [paymentMethod, setPaymentMethod] = useState('pix');
   const [checkingOut, setCheckingOut] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [showSessionPicker, setShowSessionPicker] = useState(false);
   const { items, removeItem, updateQuantity, clearCart, total, itemCount } = useCart();
 
   const fetchOrders = useCallback(async () => {
@@ -57,6 +60,13 @@ export default function PedidosScreen({ navigation }: any) {
 
   useEffect(() => { fetchOrders(); }, []);
 
+  // Carrega sessões ao montar
+  useEffect(() => {
+    getMovieSessions()
+      .then(res => setSessions(res.data))
+      .catch(() => {});
+  }, []);
+
   // Quando muda para histórico, atualiza
   useEffect(() => { if (tab === 'history') fetchOrders(); }, [tab]);
 
@@ -67,8 +77,10 @@ export default function PedidosScreen({ navigation }: any) {
       const res = await createOrder({
         items: items.map(i => ({ product_id: i.id, quantity: i.quantity })),
         payment_method: paymentMethod,
+        session_id: selectedSession?.id || null,
       });
       clearCart();
+      setSelectedSession(null);
       navigation.navigate('OrderSuccess', { order: res.data });
     } catch (error: any) {
       Alert.alert('Erro', error?.response?.data?.message || 'Erro ao finalizar pedido.');
@@ -180,6 +192,27 @@ export default function PedidosScreen({ navigation }: any) {
                   </View>
                 </View>
 
+                {/* Sessão do filme */}
+                <Text style={styles.sectionTitle}>Sessão do filme</Text>
+                <TouchableOpacity
+                  style={styles.sessionPicker}
+                  onPress={() => setShowSessionPicker(true)}
+                >
+                  <View style={{ flex: 1 }}>
+                    {selectedSession ? (
+                      <>
+                        <Text style={styles.sessionPickerTitle} numberOfLines={1}>{selectedSession.movie_title || 'Filme'}</Text>
+                        <Text style={styles.sessionPickerSub}>
+                          {selectedSession.session_date?.slice(0, 10)} • {selectedSession.session_time?.slice(0, 5)}{selectedSession.room ? ` • ${selectedSession.room}` : ''}
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={styles.sessionPickerPlaceholder}>🎬 Selecionar sessão (opcional)</Text>
+                    )}
+                  </View>
+                  <Text style={{ color: COLORS.primary, fontSize: 18 }}>›</Text>
+                </TouchableOpacity>
+
                 {/* Pagamento */}
                 <Text style={styles.sectionTitle}>Forma de pagamento</Text>
                 <View style={styles.paymentGrid}>
@@ -264,6 +297,56 @@ export default function PedidosScreen({ navigation }: any) {
           />
         )
       )}
+
+      {/* Modal seletor de sessão */}
+      <Modal visible={showSessionPicker} animationType="slide" transparent onRequestClose={() => setShowSessionPicker(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.detailModal}>
+            <View style={{ padding: SPACING.lg, borderBottomWidth: 1, borderBottomColor: '#2a2a2a', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.text }}>🎬 Escolha a sessão</Text>
+              <TouchableOpacity onPress={() => setShowSessionPicker(false)}>
+                <Text style={{ color: COLORS.textMuted, fontSize: 15 }}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              {/* Opção nenhuma */}
+              <TouchableOpacity
+                style={[styles.sessionOption, !selectedSession && styles.sessionOptionActive]}
+                onPress={() => { setSelectedSession(null); setShowSessionPicker(false); }}
+              >
+                <Text style={styles.sessionOptionEmoji}>🚫</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.sessionOptionTitle, !selectedSession && { color: COLORS.primary }]}>Sem sessão</Text>
+                  <Text style={styles.sessionOptionSub}>Compra avulsa de pipoca</Text>
+                </View>
+              </TouchableOpacity>
+              {sessions.length === 0 && (
+                <View style={{ padding: SPACING.xl, alignItems: 'center' }}>
+                  <Text style={{ color: COLORS.textSecondary }}>Nenhuma sessão disponível</Text>
+                </View>
+              )}
+              {sessions.map((s: any) => (
+                <TouchableOpacity
+                  key={s.id}
+                  style={[styles.sessionOption, selectedSession?.id === s.id && styles.sessionOptionActive]}
+                  onPress={() => { setSelectedSession(s); setShowSessionPicker(false); }}
+                >
+                  <Text style={styles.sessionOptionEmoji}>🎬</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.sessionOptionTitle, selectedSession?.id === s.id && { color: COLORS.primary }]} numberOfLines={1}>
+                      {s.movie_title || s.title || 'Filme'}
+                    </Text>
+                    <Text style={styles.sessionOptionSub}>
+                      {s.session_date?.slice(0, 10)} • {s.session_time?.slice(0, 5)}{s.room ? ` • ${s.room}` : ''}
+                    </Text>
+                  </View>
+                  {selectedSession?.id === s.id && <Text style={{ color: COLORS.primary, fontSize: 18 }}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal detalhe do pedido */}
       <Modal visible={!!selectedOrder} animationType="slide" transparent onRequestClose={() => setSelectedOrder(null)}>
@@ -397,4 +480,14 @@ const styles = StyleSheet.create({
   detailValue: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
   closeModalBtn: { marginTop: SPACING.lg, paddingVertical: 14, alignItems: 'center', borderTopWidth: 1, borderTopColor: '#2a2a2a' },
   closeModalText: { color: COLORS.textMuted, fontSize: 15 },
+  // Session picker
+  sessionPicker: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: '#2a2a2a' },
+  sessionPickerTitle: { color: COLORS.text, fontSize: 14, fontWeight: 'bold' },
+  sessionPickerSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+  sessionPickerPlaceholder: { color: COLORS.textMuted, fontSize: 14 },
+  sessionOption: { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, borderBottomWidth: 1, borderBottomColor: '#1a1a1a', gap: 12 },
+  sessionOptionActive: { backgroundColor: '#2a0005' },
+  sessionOptionEmoji: { fontSize: 22 },
+  sessionOptionTitle: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  sessionOptionSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
 });

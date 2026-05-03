@@ -4,7 +4,7 @@ import {
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../types/theme';
-import api from '../services/api';
+import { forgotPassword as apiForgotPassword, verifyResetCode as apiVerifyCode, resetPassword as apiResetPassword } from '../services/api';
 
 type Step = 'email' | 'code' | 'password' | 'done';
 
@@ -21,10 +21,9 @@ export default function ForgotPasswordScreen({ navigation }: any) {
     if (!email.trim()) { setErrorMsg('Digite seu email.'); return; }
     setLoading(true); setErrorMsg('');
     try {
-      await api.post('/auth/forgot-password', { email });
+      await apiForgotPassword(email);
       setStep('code');
     } catch (e: any) {
-      // Se o backend ainda não tem o endpoint, simula para desenvolvimento
       if (e?.response?.status === 404) {
         Alert.alert(
           '⚠️ Endpoint não implementado',
@@ -43,7 +42,7 @@ export default function ForgotPasswordScreen({ navigation }: any) {
     if (!code.trim()) { setErrorMsg('Digite o código recebido.'); return; }
     setLoading(true); setErrorMsg('');
     try {
-      await api.post('/auth/verify-reset-code', { email, code });
+      await apiVerifyCode(email, code);
       setStep('password');
     } catch (e: any) {
       setErrorMsg(e?.response?.data?.message || 'Código inválido ou expirado.');
@@ -58,7 +57,7 @@ export default function ForgotPasswordScreen({ navigation }: any) {
     if (newPassword !== confirmPassword) { setErrorMsg('As senhas não coincidem.'); return; }
     setLoading(true); setErrorMsg('');
     try {
-      await api.post('/auth/reset-password', { email, code, new_password: newPassword });
+      await apiResetPassword(email, code, newPassword);
       setStep('done');
     } catch (e: any) {
       setErrorMsg(e?.response?.data?.message || 'Erro ao redefinir senha.');

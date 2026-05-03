@@ -6,9 +6,21 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const { items, notes, payment_method } = req.body;
+    const { items, notes, payment_method, session_id } = req.body;
     const customer_id = (req as any).user.id;
     const seller_id = (req as any).user.role === 'seller' ? customer_id : null;
+
+    // Valida sessão se informada
+    if (session_id) {
+      const [sessionRows]: any = await conn.query(
+        'SELECT id FROM movie_sessions WHERE id = ?', [session_id]
+      );
+      if (sessionRows.length === 0) {
+        await conn.rollback();
+        res.status(400).json({ message: 'Sessão não encontrada.' });
+        return;
+      }
+    }
 
     let total = 0;
     for (const item of items) {
@@ -30,8 +42,8 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     }
 
     const [orderResult]: any = await conn.query(
-      'INSERT INTO orders (customer_id, seller_id, total, notes, status) VALUES (?, ?, ?, ?, ?)',
-      [customer_id, seller_id, total, notes || null, 'pending']
+      'INSERT INTO orders (customer_id, seller_id, session_id, total, notes, status) VALUES (?, ?, ?, ?, ?, ?)',
+      [customer_id, seller_id, session_id || null, total, notes || null, 'pending']
     );
     const order_id = orderResult.insertId;
 
@@ -71,11 +83,21 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = (req as any).user;
     let query = `
-      SELECT o.*, t.ticket_code, u.name as customer_name, p.status as payment_status
+      SELECT o.*,
+             t.ticket_code,
+             u.name as customer_name,
+             p.status as payment_status,
+             ms.id as session_id,
+             mv.title as movie_title,
+             ms.session_date,
+             ms.session_time,
+             ms.room
       FROM orders o
       LEFT JOIN tickets t ON t.order_id = o.id
       LEFT JOIN users u ON u.id = o.customer_id
       LEFT JOIN payments p ON p.order_id = o.id
+      LEFT JOIN movie_sessions ms ON ms.id = o.session_id
+      LEFT JOIN movies mv ON mv.id = ms.movie_id
     `;
     const params: any[] = [];
     if (user.role === 'customer') {
