@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl, Modal, ScrollView, TextInput, Alert, Image
+  ActivityIndicator, RefreshControl, Modal, ScrollView,
+  TextInput, Alert, Image, Platform,
 } from 'react-native';
-import { getMovies, createMovie, updateMovie, deleteMovie } from '../services/api';
+import * as ImagePicker from 'expo-image-picker';
+import { getMovies, createMovie, updateMovie, deleteMovie, uploadImage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
 
-const POSTER_PLACEHOLDER = require('../assets/Image-not-found.png');
+const POSTER_PLACEHOLDER = require('../../assets/Image-not-found.png');
 
 interface Movie {
   id: number;
@@ -27,13 +29,6 @@ interface Movie {
   on_display_until: string;
   is_active: number;
 }
-
-const GENRE_EMOJI: Record<string, string> = {
-  'Ação': '💥', 'Aventura': '🗺️', 'Comédia': '😂', 'Drama': '🎭',
-  'Ficção Científica': '🚀', 'Terror': '👻', 'Romance': '❤️',
-  'Animação': '🎨', 'Suspense': '🔍', 'Fantasia': '🧙',
-  'Ação / Comédia': '💥', 'default': '🎬',
-};
 
 const RATING_COLOR: Record<string, string> = {
   'Livre': '#00C853', '10+': '#64B5F6', '12+': '#FFB300',
@@ -58,6 +53,8 @@ export default function MoviesScreen({ navigation }: any) {
   const [saving, setSaving] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [tab, setTab] = useState<'now' | 'soon'>('now');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [localPosterUri, setLocalPosterUri] = useState<string | null>(null);
 
   const isComingSoon = (m: Movie) => m.session_date && new Date(m.session_date) > new Date();
   const daysInTheaters = (d: string) => d ? Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / 86400000)) : null;
@@ -78,9 +75,80 @@ export default function MoviesScreen({ navigation }: any) {
 
   useEffect(() => { fetchMovies(); }, []);
 
+  // ── Picker de imagem ─────────────────────────────────────
+  const handlePickImage = () => {
+    Alert.alert(
+      '📸 Adicionar Poster',
+      'Escolha a origem da imagem:',
+      [
+        {
+          text: '📷 Câmera',
+          onPress: () => openPicker('camera'),
+        },
+        {
+          text: '🖼 Galeria',
+          onPress: () => openPicker('gallery'),
+        },
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    );
+  };
+
+  const openPicker = async (source: 'camera' | 'gallery') => {
+    try {
+      let result: ImagePicker.ImagePickerResult;
+
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permissão negada', 'Permita o acesso à câmera nas configurações.');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [2, 3],
+          quality: 0.85,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permissão negada', 'Permita o acesso à galeria nas configurações.');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [2, 3],
+          quality: 0.85,
+        });
+      }
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        setLocalPosterUri(asset.uri);
+        setUploadingImage(true);
+
+        try {
+          const url = await uploadImage(asset.uri, `poster-${Date.now()}.jpg`);
+          setForm(f => ({ ...f, poster_url: url }));
+          Alert.alert('✅ Sucesso', 'Imagem enviada com sucesso!');
+        } catch (err: any) {
+          Alert.alert('Erro no upload', err?.response?.data?.message || 'Falha ao enviar a imagem. Verifique sua conexão.');
+          setLocalPosterUri(null);
+        } finally {
+          setUploadingImage(false);
+        }
+      }
+    } catch (err) {
+      Alert.alert('Erro', 'Não foi possível abrir o seletor de imagem.');
+    }
+  };
+
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
+    setLocalPosterUri(null);
     setModalVisible(true);
   };
 
@@ -102,6 +170,7 @@ export default function MoviesScreen({ navigation }: any) {
       premiere_date: movie.premiere_date?.slice(0, 10) || '',
       on_display_until: movie.on_display_until?.slice(0, 10) || '',
     });
+    setLocalPosterUri(null);
     setSelectedMovie(null);
     setModalVisible(true);
   };
@@ -109,6 +178,10 @@ export default function MoviesScreen({ navigation }: any) {
   const handleSave = async () => {
     if (!form.title || !form.session_date || !form.session_time) {
       Alert.alert('Atenção', 'Título, data e horário são obrigatórios.');
+      return;
+    }
+    if (uploadingImage) {
+      Alert.alert('Aguarde', 'O upload da imagem ainda está em andamento...');
       return;
     }
     setSaving(true);
@@ -145,7 +218,7 @@ export default function MoviesScreen({ navigation }: any) {
               await deleteMovie(movie.id);
               setSelectedMovie(null);
               fetchMovies();
-            } catch (e: any) {
+            } catch {
               Alert.alert('Erro', 'Não foi possível remover.');
             }
           }
@@ -164,6 +237,12 @@ export default function MoviesScreen({ navigation }: any) {
     if (!timeStr) return '';
     return timeStr.slice(0, 5);
   };
+
+  const posterSource = localPosterUri
+    ? { uri: localPosterUri }
+    : form.poster_url
+      ? { uri: form.poster_url }
+      : null;
 
   if (loading) {
     return (
@@ -272,7 +351,6 @@ export default function MoviesScreen({ navigation }: any) {
                   </View>
                 </View>
 
-                {/* Estreia / Tempo em cartaz */}
                 <View style={styles.infoTagsRow}>
                   {!soon && inDays !== null && (
                     <View style={styles.infoTag}>
@@ -312,7 +390,7 @@ export default function MoviesScreen({ navigation }: any) {
         }}
       />
 
-      {/* Modal detalhe do filme */}
+      {/* ── Modal detalhe do filme ── */}
       <Modal visible={!!selectedMovie} animationType="slide" transparent onRequestClose={() => setSelectedMovie(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.detailModal}>
@@ -320,7 +398,11 @@ export default function MoviesScreen({ navigation }: any) {
               {selectedMovie && (
                 <>
                   <View style={styles.detailPoster}>
-                    <Image source={selectedMovie?.poster_url ? { uri: selectedMovie.poster_url } : POSTER_PLACEHOLDER} style={styles.detailPosterImage} resizeMode="cover" />
+                    <Image
+                      source={selectedMovie?.poster_url ? { uri: selectedMovie.poster_url } : POSTER_PLACEHOLDER}
+                      style={styles.detailPosterImage}
+                      resizeMode="cover"
+                    />
                   </View>
 
                   <View style={styles.detailBody}>
@@ -353,6 +435,7 @@ export default function MoviesScreen({ navigation }: any) {
                       <Text style={styles.detailInfoRow}>🕐 {formatTime(selectedMovie.session_time)}</Text>
                       {selectedMovie.room && <Text style={styles.detailInfoRow}>🏛 {selectedMovie.room}</Text>}
                       {selectedMovie.director && <Text style={styles.detailInfoRow}>🎥 Dir: {selectedMovie.director}</Text>}
+                      {selectedMovie.price > 0 && <Text style={styles.detailInfoRow}>💰 R$ {Number(selectedMovie.price).toFixed(2)}</Text>}
                     </View>
 
                     <TouchableOpacity style={styles.ctaButton} onPress={() => { setSelectedMovie(null); navigation.navigate('Home'); }}>
@@ -381,47 +464,115 @@ export default function MoviesScreen({ navigation }: any) {
         </View>
       </Modal>
 
-      {/* Modal criar/editar filme */}
-      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
+      {/* ── Modal criar/editar filme ── */}
+      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => !saving && setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.formModal}>
             <Text style={styles.formTitle}>{editing ? '✏️ Editar Sessão' : '🎬 Nova Sessão'}</Text>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              {[
+
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+
+              {/* ── Seção de Poster ── */}
+              <View style={styles.posterSection}>
+                <Text style={styles.posterSectionTitle}>🖼 Poster do Filme</Text>
+
+                <TouchableOpacity
+                  style={styles.posterPicker}
+                  onPress={handlePickImage}
+                  disabled={uploadingImage || saving}
+                  activeOpacity={0.75}
+                >
+                  {uploadingImage ? (
+                    <View style={styles.posterPickerInner}>
+                      <ActivityIndicator color={COLORS.primary} size="large" />
+                      <Text style={styles.posterUploadingText}>Enviando imagem...</Text>
+                    </View>
+                  ) : posterSource ? (
+                    <View style={styles.posterPreviewWrapper}>
+                      <Image source={posterSource} style={styles.posterPreview} resizeMode="cover" />
+                      <View style={styles.posterChangeOverlay}>
+                        <Text style={styles.posterChangeText}>📷 Trocar</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.posterPickerInner}>
+                      <Text style={styles.posterPickerIcon}>📷</Text>
+                      <Text style={styles.posterPickerText}>Toque para adicionar poster</Text>
+                      <Text style={styles.posterPickerHint}>Câmera ou galeria • Máx 5MB</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                {/* URL manual como alternativa */}
+                <View style={styles.posterUrlRow}>
+                  <Text style={styles.posterUrlLabel}>ou cole uma URL:</Text>
+                  <TextInput
+                    style={styles.posterUrlInput}
+                    placeholder="https://..."
+                    placeholderTextColor={COLORS.textMuted}
+                    value={form.poster_url}
+                    onChangeText={v => {
+                      setForm(f => ({ ...f, poster_url: v }));
+                      if (v) setLocalPosterUri(null);
+                    }}
+                    keyboardType="url"
+                    editable={!saving && !uploadingImage}
+                    autoCapitalize="none"
+                  />
+                </View>
+              </View>
+
+              {/* ── Campos do formulário ── */}
+              {([
                 { label: 'Título *', key: 'title', placeholder: 'Ex: Duna: Parte Dois' },
-                { label: 'Descrição', key: 'description', placeholder: 'Sinopse do filme' },
+                { label: 'Descrição', key: 'description', placeholder: 'Sinopse do filme', multi: true },
                 { label: 'Gênero', key: 'genre', placeholder: 'Ex: Ficção Científica' },
-                { label: 'Duração (minutos)', key: 'duration_minutes', placeholder: 'Ex: 150', keyboard: 'numeric' },
+                { label: 'Duração (min)', key: 'duration_minutes', placeholder: 'Ex: 150', keyboard: 'numeric' },
                 { label: 'Diretor', key: 'director', placeholder: 'Ex: Denis Villeneuve' },
-                { label: 'Elenco', key: 'cast_info', placeholder: 'Ex: Timothée Chalamet, Zendaya' },
+                { label: 'Elenco', key: 'cast_info', placeholder: 'Ex: Timothée Chalamet, Zendaya', multi: true },
                 { label: 'Classificação', key: 'rating', placeholder: 'Livre, 10+, 12+, 14+, 16+, 18+' },
-                { label: 'URL do Poster', key: 'poster_url', placeholder: 'https://...' },
                 { label: 'Data da Sessão *', key: 'session_date', placeholder: 'AAAA-MM-DD' },
                 { label: 'Horário *', key: 'session_time', placeholder: 'HH:MM' },
                 { label: 'Sala', key: 'room', placeholder: 'Ex: Sala 1' },
-                { label: 'Preço', key: 'price', placeholder: '0.00', keyboard: 'numeric' },
-              ].map(field => (
+                { label: 'Preço (R$)', key: 'price', placeholder: '0.00', keyboard: 'numeric' },
+                { label: 'Data de Estreia', key: 'premiere_date', placeholder: 'AAAA-MM-DD' },
+                { label: 'Em cartaz até', key: 'on_display_until', placeholder: 'AAAA-MM-DD' },
+              ] as const).map(field => (
                 <View key={field.key} style={styles.formField}>
                   <Text style={styles.formLabel}>{field.label}</Text>
                   <TextInput
-                    style={[styles.formInput, field.key === 'description' || field.key === 'cast_info' ? styles.formInputMulti : null]}
+                    style={[
+                      styles.formInput,
+                      (field as any).multi ? styles.formInputMulti : null,
+                    ]}
                     placeholder={field.placeholder}
                     placeholderTextColor={COLORS.textMuted}
                     value={(form as any)[field.key]}
                     onChangeText={v => setForm(f => ({ ...f, [field.key]: v }))}
                     keyboardType={(field as any).keyboard || 'default'}
-                    multiline={field.key === 'description' || field.key === 'cast_info'}
-                    numberOfLines={field.key === 'description' || field.key === 'cast_info' ? 3 : 1}
+                    multiline={(field as any).multi}
+                    numberOfLines={(field as any).multi ? 3 : 1}
+                    editable={!saving}
                   />
                 </View>
               ))}
+
+              <View style={{ height: SPACING.xl }} />
             </ScrollView>
 
             <View style={styles.formActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)} disabled={saving}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setModalVisible(false)}
+                disabled={saving || uploadingImage}
+              >
                 <Text style={styles.cancelBtnText}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+              <TouchableOpacity
+                style={[styles.saveBtn, (saving || uploadingImage) && { opacity: 0.6 }]}
+                onPress={handleSave}
+                disabled={saving || uploadingImage}
+              >
                 {saving
                   ? <ActivityIndicator color="#fff" size="small" />
                   : <Text style={styles.saveBtnText}>💾 Salvar</Text>
@@ -463,8 +614,10 @@ const styles = StyleSheet.create({
 
   list: { padding: SPACING.md },
 
-  // Tabs
-  tabRow: { flexDirection: 'row', marginHorizontal: SPACING.md, marginTop: SPACING.md, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: 4, gap: 4 },
+  tabRow: {
+    flexDirection: 'row', marginHorizontal: SPACING.md, marginTop: SPACING.md,
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: 4, gap: 4,
+  },
   tabBtn: { flex: 1, paddingVertical: 11, alignItems: 'center', borderRadius: RADIUS.sm },
   tabBtnActive: { backgroundColor: COLORS.primary },
   tabLabel: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
@@ -524,8 +677,7 @@ const styles = StyleSheet.create({
   },
   detailPoster: {
     height: 220, backgroundColor: '#111',
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    overflow: 'hidden',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden',
   },
   detailPosterImage: { width: '100%', height: 220 },
   detailBody: { padding: SPACING.lg },
@@ -563,9 +715,57 @@ const styles = StyleSheet.create({
   // Modal form
   formModal: {
     backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    maxHeight: '92%', padding: SPACING.lg,
+    maxHeight: '94%', padding: SPACING.lg, flex: 1,
   },
   formTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.text, marginBottom: SPACING.md },
+
+  // Seção do poster
+  posterSection: {
+    marginBottom: SPACING.lg,
+    backgroundColor: '#111',
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  posterSectionTitle: {
+    fontSize: 14, fontWeight: 'bold', color: COLORS.textSecondary, marginBottom: SPACING.md,
+  },
+  posterPicker: {
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: COLORS.primary + '66',
+    backgroundColor: '#0a0a0a',
+    minHeight: 160,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  posterPickerInner: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: SPACING.xl,
+  },
+  posterPickerIcon: { fontSize: 40, marginBottom: SPACING.sm },
+  posterPickerText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  posterPickerHint: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
+  posterPreviewWrapper: { width: '100%', position: 'relative' },
+  posterPreview: { width: '100%', height: 220, borderRadius: RADIUS.md },
+  posterChangeOverlay: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: 'rgba(0,0,0,0.65)', paddingVertical: SPACING.sm,
+    alignItems: 'center', borderBottomLeftRadius: RADIUS.md, borderBottomRightRadius: RADIUS.md,
+  },
+  posterChangeText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+  posterUploadingText: { color: COLORS.textSecondary, marginTop: SPACING.sm, fontSize: 14 },
+  posterUrlRow: { marginTop: SPACING.md },
+  posterUrlLabel: { fontSize: 12, color: COLORS.textMuted, marginBottom: 6 },
+  posterUrlInput: {
+    backgroundColor: '#1a1a1a', borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.md, paddingVertical: 10,
+    color: COLORS.text, fontSize: 13, borderWidth: 1, borderColor: '#333',
+  },
+
   formField: { marginBottom: SPACING.md },
   formLabel: { fontSize: 13, color: COLORS.textSecondary, marginBottom: 4 },
   formInput: {
@@ -574,7 +774,7 @@ const styles = StyleSheet.create({
     color: COLORS.text, fontSize: 15, borderWidth: 1, borderColor: '#333',
   },
   formInputMulti: { height: 80, textAlignVertical: 'top' },
-  formActions: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
+  formActions: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.sm },
   cancelBtn: {
     flex: 1, borderRadius: RADIUS.md, paddingVertical: 13,
     alignItems: 'center', borderWidth: 1, borderColor: '#444',

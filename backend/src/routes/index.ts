@@ -6,6 +6,7 @@ import * as orders     from '../controllers/orderController';
 import * as payments   from '../controllers/paymentController';
 import * as users      from '../controllers/userController';
 import * as movies     from '../controllers/movieController';
+import { uploadImage, upload } from '../controllers/uploadController';
 import { authMiddleware, roleMiddleware } from '../middlewares/auth';
 
 const router = Router();
@@ -20,6 +21,9 @@ router.get ('/auth/profile',           authMiddleware, auth.getProfile);
 router.post('/auth/forgot-password',   auth.forgotPassword);
 router.post('/auth/verify-reset-code', auth.verifyResetCode);
 router.post('/auth/reset-password',    auth.resetPassword);
+
+// ── UPLOAD DE IMAGEM ─────────────────────────────────────
+router.post('/upload/image', authMiddleware, roleMiddleware(...STAFF), upload.single('image'), uploadImage);
 
 // ── USUÁRIOS ─────────────────────────────────────────────
 router.get   ('/users',     authMiddleware, roleMiddleware(...ADMIN), users.getAll);

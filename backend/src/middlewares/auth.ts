@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { JwtPayload } from '../types';
 
+const JWT_SECRET = process.env.JWT_SECRET!;
+
 export const authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -10,7 +12,7 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
   }
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'pipocalizando_secret') as JwtPayload;
+    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
     (req as any).user = decoded;
     next();
   } catch {
@@ -22,8 +24,8 @@ export const roleMiddleware = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     const user = (req as any).user;
     if (!roles.includes(user.role)) {
-      res.status(403).json({ 
-        message: `Acesso negado. Requer um dos roles: ${roles.join(', ')}.` 
+      res.status(403).json({
+        message: `Acesso negado. Requer um dos perfis: ${roles.join(', ')}.`,
       });
       return;
     }

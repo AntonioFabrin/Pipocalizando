@@ -3,6 +3,8 @@ import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
 import { User } from '../types';
 
+const JWT_SECRET = process.env.JWT_SECRET!;
+
 export const loginUser = async (email: string, password: string) => {
   const user = await UserModel.findByEmail(email);
   if (!user) throw new Error('Credenciais inválidas.');
@@ -12,7 +14,7 @@ export const loginUser = async (email: string, password: string) => {
 
   const token = jwt.sign(
     { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET || 'pipocalizando_secret',
+    JWT_SECRET,
     { expiresIn: '7d' }
   );
 

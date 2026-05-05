@@ -2,11 +2,19 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator,
   RefreshControl, TouchableOpacity, Alert, ScrollView,
-  Modal, TextInput, KeyboardAvoidingView, Platform,
+  Modal, TextInput, KeyboardAvoidingView, Platform, Image,
 } from 'react-native';
-import { getOrders, updateOrderStatus, getProducts, getMovies, createProduct, updateProduct, deleteProduct } from '../services/api';
+import * as ImagePicker from 'expo-image-picker';
+import {
+  getOrders, updateOrderStatus,
+  getProducts, createProduct, updateProduct, deleteProduct,
+  getMovies, createMovie, updateMovie, deleteMovie,
+  uploadImage,
+} from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
+
+const POSTER_PLACEHOLDER = require('../../assets/Image-not-found.png');
 
 const STATUS_OPTIONS = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
 const STATUS_MAP: Record<string, { label: string; color: string; emoji: string }> = {
@@ -20,6 +28,14 @@ const STATUS_MAP: Record<string, { label: string; color: string; emoji: string }
 
 type TabType = 'orders' | 'products' | 'movies';
 
+const EMPTY_PRODUCT = { name: '', price: '', stock: '', description: '', image_url: '', category_name: '' };
+const EMPTY_MOVIE = {
+  title: '', description: '', genre: '', duration_minutes: '',
+  director: '', cast_info: '', rating: '', poster_url: '',
+  session_date: '', session_time: '', room: '', price: '',
+  premiere_date: '', on_display_until: '',
+};
+
 export default function AdminScreen({ navigation }: any) {
   const { user, logout } = useAuth();
   const [tab, setTab] = useState<TabType>('orders');
@@ -29,13 +45,21 @@ export default function AdminScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // ── Estado do modal de produto ────────────────────────
-  const EMPTY_PRODUCT = { name: '', price: '', stock: '', description: '', image_url: '', category_name: '' };
+  // ── Estado modal produto ──────────────────────────────
   const [productModal, setProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [productForm, setProductForm] = useState(EMPTY_PRODUCT);
   const [savingProduct, setSavingProduct] = useState(false);
 
+  // ── Estado modal filme ────────────────────────────────
+  const [movieModal, setMovieModal] = useState(false);
+  const [editingMovie, setEditingMovie] = useState<any>(null);
+  const [movieForm, setMovieForm] = useState(EMPTY_MOVIE);
+  const [savingMovie, setSavingMovie] = useState(false);
+  const [uploadingPoster, setUploadingPoster] = useState(false);
+  const [localPosterUri, setLocalPosterUri] = useState<string | null>(null);
+
+  // ── Produto handlers ──────────────────────────────────
   const openCreateProduct = () => {
     setEditingProduct(null);
     setProductForm(EMPTY_PRODUCT);
@@ -64,8 +88,7 @@ export default function AdminScreen({ navigation }: any) {
     try {
       const payload = {
         name: productForm.name.trim(),
-        price,
-        stock,
+        price, stock,
         description: productForm.description.trim(),
         image_url: productForm.image_url.trim(),
       };
@@ -84,32 +107,140 @@ export default function AdminScreen({ navigation }: any) {
   };
 
   const handleDeleteProduct = (p: any) => {
-    Alert.alert(
-      'Excluir produto',
-      `Tem certeza que deseja excluir "${p.name}"?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir', style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteProduct(p.id);
-              fetchAll();
-            } catch (e: any) {
-              Alert.alert('Erro', e?.response?.data?.message || 'Erro ao excluir.');
-            }
-          },
+    Alert.alert('Excluir produto', `Tem certeza que deseja excluir "${p.name}"?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir', style: 'destructive',
+        onPress: async () => {
+          try { await deleteProduct(p.id); fetchAll(); }
+          catch (e: any) { Alert.alert('Erro', e?.response?.data?.message || 'Erro ao excluir.'); }
         },
-      ]
-    );
+      },
+    ]);
   };
 
+  // ── Filme handlers ────────────────────────────────────
+  const openCreateMovie = () => {
+    setEditingMovie(null);
+    setMovieForm(EMPTY_MOVIE);
+    setLocalPosterUri(null);
+    setMovieModal(true);
+  };
+
+  const openEditMovie = (m: any) => {
+    setEditingMovie(m);
+    setMovieForm({
+      title: m.title || '',
+      description: m.description || '',
+      genre: m.genre || '',
+      duration_minutes: m.duration_minutes?.toString() || '',
+      director: m.director || '',
+      cast_info: m.cast_info || '',
+      rating: m.rating || '',
+      poster_url: m.poster_url || '',
+      session_date: m.session_date?.slice(0, 10) || '',
+      session_time: m.session_time || '',
+      room: m.room || '',
+      price: m.price?.toString() || '0',
+      premiere_date: m.premiere_date?.slice(0, 10) || '',
+      on_display_until: m.on_display_until?.slice(0, 10) || '',
+    });
+    setLocalPosterUri(null);
+    setMovieModal(true);
+  };
+
+  const handlePickPoster = () => {
+    Alert.alert('📸 Poster do Filme', 'Escolha a origem:', [
+      { text: '📷 Câmera',   onPress: () => openImagePicker('camera') },
+      { text: '🖼 Galeria', onPress: () => openImagePicker('gallery') },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  };
+
+  const openImagePicker = async (source: 'camera' | 'gallery') => {
+    try {
+      let result: ImagePicker.ImagePickerResult;
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') { Alert.alert('Permissão negada', 'Permita o acesso à câmera nas configurações.'); return; }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true, aspect: [2, 3], quality: 0.85,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') { Alert.alert('Permissão negada', 'Permita o acesso à galeria nas configurações.'); return; }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true, aspect: [2, 3], quality: 0.85,
+        });
+      }
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        setLocalPosterUri(asset.uri);
+        setUploadingPoster(true);
+        try {
+          const url = await uploadImage(asset.uri, `poster-${Date.now()}.jpg`);
+          setMovieForm(f => ({ ...f, poster_url: url }));
+          Alert.alert('✅ Sucesso', 'Imagem enviada!');
+        } catch (err: any) {
+          Alert.alert('Erro no upload', err?.response?.data?.message || 'Falha ao enviar a imagem.');
+          setLocalPosterUri(null);
+        } finally {
+          setUploadingPoster(false);
+        }
+      }
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir o seletor de imagem.');
+    }
+  };
+
+  const handleSaveMovie = async () => {
+    if (!movieForm.title || !movieForm.session_date || !movieForm.session_time) {
+      Alert.alert('Atenção', 'Título, data e horário são obrigatórios.');
+      return;
+    }
+    if (uploadingPoster) { Alert.alert('Aguarde', 'O upload da imagem ainda está em andamento...'); return; }
+    setSavingMovie(true);
+    try {
+      const payload = {
+        ...movieForm,
+        duration_minutes: movieForm.duration_minutes ? parseInt(movieForm.duration_minutes) : null,
+        price: movieForm.price ? parseFloat(movieForm.price) : 0,
+      };
+      if (editingMovie) {
+        await updateMovie(editingMovie.id, payload);
+      } else {
+        await createMovie(payload);
+      }
+      setMovieModal(false);
+      fetchAll();
+    } catch (e: any) {
+      Alert.alert('Erro', e?.response?.data?.message || 'Erro ao salvar filme.');
+    } finally {
+      setSavingMovie(false);
+    }
+  };
+
+  const handleDeleteMovie = (m: any) => {
+    Alert.alert('Remover sessão', `Deseja remover "${m.title}"?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Remover', style: 'destructive',
+        onPress: async () => {
+          try { await deleteMovie(m.id); fetchAll(); }
+          catch { Alert.alert('Erro', 'Não foi possível remover.'); }
+        }
+      }
+    ]);
+  };
+
+  // ── Fetch ─────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     try {
       const [ordersRes, productsRes, moviesRes] = await Promise.all([
-        getOrders(),
-        getProducts(),
-        getMovies(),
+        getOrders(), getProducts(), getMovies(),
       ]);
       setOrders(ordersRes.data);
       setProducts(productsRes.data);
@@ -128,12 +259,8 @@ export default function AdminScreen({ navigation }: any) {
     const options = STATUS_OPTIONS.filter(s => s !== currentStatus).map(s => ({
       text: `${STATUS_MAP[s].emoji} ${STATUS_MAP[s].label}`,
       onPress: async () => {
-        try {
-          await updateOrderStatus(orderId, s);
-          fetchAll();
-        } catch {
-          Alert.alert('Erro', 'Não foi possível atualizar o status.');
-        }
+        try { await updateOrderStatus(orderId, s); fetchAll(); }
+        catch { Alert.alert('Erro', 'Não foi possível atualizar o status.'); }
       },
     }));
     Alert.alert('Atualizar Status', 'Selecione o novo status:', [
@@ -143,11 +270,11 @@ export default function AdminScreen({ navigation }: any) {
   };
 
   const stats = [
-    { label: 'Pedidos', value: orders.length,                                               icon: '📋', color: '#64B5F6' },
-    { label: 'Aguardando', value: orders.filter(o => o.status === 'pending').length,        icon: '⏳', color: COLORS.warning },
-    { label: 'Prontos',    value: orders.filter(o => o.status === 'ready').length,          icon: '🎉', color: COLORS.success },
-    { label: 'Produtos',   value: products.length,                                          icon: '🍿', color: COLORS.primary },
-    { label: 'Sessões',    value: movies.length,                                            icon: '🎬', color: '#CE93D8' },
+    { label: 'Pedidos',    value: orders.length,                                                icon: '📋', color: '#64B5F6' },
+    { label: 'Aguardando', value: orders.filter(o => o.status === 'pending').length,            icon: '⏳', color: COLORS.warning },
+    { label: 'Prontos',    value: orders.filter(o => o.status === 'ready').length,              icon: '🎉', color: COLORS.success },
+    { label: 'Produtos',   value: products.length,                                              icon: '🍿', color: COLORS.primary },
+    { label: 'Sessões',    value: movies.length,                                                icon: '🎬', color: '#CE93D8' },
     { label: 'Faturado',   value: `R$${orders.filter(o => o.payment_status === 'approved').reduce((s: number, o: any) => s + Number(o.total), 0).toFixed(0)}`, icon: '💰', color: COLORS.gold },
   ];
 
@@ -162,8 +289,14 @@ export default function AdminScreen({ navigation }: any) {
   const TABS: { key: TabType; label: string; emoji: string }[] = [
     { key: 'orders',   label: 'Pedidos',  emoji: '📋' },
     { key: 'products', label: 'Produtos', emoji: '🍿' },
-    { key: 'movies',   label: 'Sessões',  emoji: '🎬' },
+    { key: 'movies',   label: 'Filmes',   emoji: '🎬' },
   ];
+
+  const posterSource = localPosterUri
+    ? { uri: localPosterUri }
+    : movieForm.poster_url
+      ? { uri: movieForm.poster_url }
+      : null;
 
   return (
     <View style={styles.container}>
@@ -178,9 +311,7 @@ export default function AdminScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchAll(); }} tintColor={COLORS.primary} />}
-      >
+      <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchAll(); }} tintColor={COLORS.primary} />}>
         {/* Stats grid */}
         <View style={styles.statsGrid}>
           {stats.map((s, i) => (
@@ -195,21 +326,16 @@ export default function AdminScreen({ navigation }: any) {
         {/* Tabs */}
         <View style={styles.tabRow}>
           {TABS.map(t => (
-            <TouchableOpacity
-              key={t.key}
-              style={[styles.tabBtn, tab === t.key && styles.tabBtnActive]}
-              onPress={() => setTab(t.key)}
-            >
+            <TouchableOpacity key={t.key} style={[styles.tabBtn, tab === t.key && styles.tabBtnActive]} onPress={() => setTab(t.key)}>
               <Text style={styles.tabEmoji}>{t.emoji}</Text>
               <Text style={[styles.tabLabel, tab === t.key && styles.tabLabelActive]}>{t.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Conteúdo da tab */}
         <View style={styles.tabContent}>
 
-          {/* Tab: Pedidos */}
+          {/* ── Tab: Pedidos ── */}
           {tab === 'orders' && (
             orders.length === 0
               ? <View style={styles.empty}><Text style={styles.emptyText}>Nenhum pedido encontrado.</Text></View>
@@ -219,13 +345,8 @@ export default function AdminScreen({ navigation }: any) {
                     <View key={item.id} style={styles.orderCard}>
                       <View style={styles.orderHeader}>
                         <Text style={styles.orderId}>Pedido #{item.id}</Text>
-                        <TouchableOpacity
-                          style={[styles.statusBadge, { backgroundColor: status.color + '33' }]}
-                          onPress={() => handleStatusChange(item.id, item.status)}
-                        >
-                          <Text style={[styles.statusText, { color: status.color }]}>
-                            {status.emoji} {status.label} ✏️
-                          </Text>
+                        <TouchableOpacity style={[styles.statusBadge, { backgroundColor: status.color + '33' }]} onPress={() => handleStatusChange(item.id, item.status)}>
+                          <Text style={[styles.statusText, { color: status.color }]}>{status.emoji} {status.label} ✏️</Text>
                         </TouchableOpacity>
                       </View>
                       <View style={styles.orderMeta}>
@@ -233,9 +354,7 @@ export default function AdminScreen({ navigation }: any) {
                         <Text style={styles.orderTicket}>🎫 {item.ticket_code}</Text>
                         <View style={styles.orderFooter}>
                           <Text style={styles.orderTotal}>💰 R$ {Number(item.total).toFixed(2)}</Text>
-                          <Text style={styles.orderDate}>
-                            {new Date(item.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                          </Text>
+                          <Text style={styles.orderDate}>{new Date(item.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Text>
                         </View>
                       </View>
                     </View>
@@ -243,12 +362,11 @@ export default function AdminScreen({ navigation }: any) {
                 })
           )}
 
-          {/* Tab: Produtos */}
+          {/* ── Tab: Produtos ── */}
           {tab === 'products' && (
             <>
-              {/* Botão Novo Produto */}
-              <TouchableOpacity style={styles.newProductBtn} onPress={openCreateProduct}>
-                <Text style={styles.newProductBtnText}>+ Novo produto</Text>
+              <TouchableOpacity style={styles.newItemBtn} onPress={openCreateProduct}>
+                <Text style={styles.newItemBtnText}>+ Novo produto</Text>
               </TouchableOpacity>
               {products.length === 0
                 ? <View style={styles.empty}><Text style={styles.emptyText}>Nenhum produto cadastrado.</Text></View>
@@ -266,9 +384,7 @@ export default function AdminScreen({ navigation }: any) {
                       <View style={styles.productRight}>
                         <Text style={styles.productPrice}>R$ {Number(p.price).toFixed(2)}</Text>
                         <View style={[styles.stockBadge, { backgroundColor: p.stock <= 5 ? COLORS.warning + '33' : COLORS.success + '22' }]}>
-                          <Text style={[styles.stockText, { color: p.stock <= 5 ? COLORS.warning : COLORS.success }]}>
-                            {p.stock} un.
-                          </Text>
+                          <Text style={[styles.stockText, { color: p.stock <= 5 ? COLORS.warning : COLORS.success }]}>{p.stock} un.</Text>
                         </View>
                         <View style={styles.productActions}>
                           <TouchableOpacity style={styles.actionBtn} onPress={() => openEditProduct(p)}>
@@ -285,51 +401,60 @@ export default function AdminScreen({ navigation }: any) {
             </>
           )}
 
-          {/* Tab: Sessões */}
+          {/* ── Tab: Filmes (CRUD inline) ── */}
           {tab === 'movies' && (
-            movies.length === 0
-              ? (
-                <View style={styles.empty}>
-                  <Text style={styles.emptyText}>Nenhuma sessão cadastrada.</Text>
-                  <TouchableOpacity style={styles.goBtn} onPress={() => navigation.navigate('Movies')}>
-                    <Text style={styles.goBtnText}>Gerenciar sessões</Text>
-                  </TouchableOpacity>
-                </View>
-              )
-              : movies.map((m: any) => (
-                  <View key={m.id} style={styles.movieCard}>
-                    <View style={styles.movieEmoji}>
-                      <Text style={{ fontSize: 28 }}>🎬</Text>
+            <>
+              <TouchableOpacity style={styles.newItemBtn} onPress={openCreateMovie}>
+                <Text style={styles.newItemBtnText}>+ Novo filme / sessão</Text>
+              </TouchableOpacity>
+              {movies.length === 0
+                ? <View style={styles.empty}><Text style={styles.emptyText}>Nenhum filme cadastrado.</Text></View>
+                : movies.map((m: any) => (
+                    <View key={m.id} style={styles.movieCard}>
+                      <Image
+                        source={m.poster_url ? { uri: m.poster_url } : POSTER_PLACEHOLDER}
+                        style={styles.moviePoster}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.movieInfo}>
+                        <Text style={styles.movieTitle} numberOfLines={1}>{m.title}</Text>
+                        {m.genre ? <Text style={styles.movieGenre}>{m.genre}</Text> : null}
+                        <Text style={styles.movieMeta}>
+                          📅 {m.session_date?.slice(0, 10)} • {m.session_time?.slice(0, 5)}
+                        </Text>
+                        {m.room ? <Text style={styles.movieRoom}>🏛 {m.room}</Text> : null}
+                        {m.price > 0 ? <Text style={styles.moviePrice}>💰 R$ {Number(m.price).toFixed(2)}</Text> : null}
+                      </View>
+                      <View style={styles.movieActions}>
+                        <TouchableOpacity style={styles.actionBtn} onPress={() => openEditMovie(m)}>
+                          <Text style={styles.actionBtnText}>✏️</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.actionBtn, styles.actionBtnDanger]} onPress={() => handleDeleteMovie(m)}>
+                          <Text style={styles.actionBtnText}>🗑️</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                    <View style={styles.movieInfo}>
-                      <Text style={styles.movieTitle} numberOfLines={1}>{m.title}</Text>
-                      <Text style={styles.movieMeta}>{m.session_date?.slice(0, 10)} • {m.session_time?.slice(0, 5)}</Text>
-                      {m.room ? <Text style={styles.movieRoom}>{m.room}</Text> : null}
-                    </View>
-                    <TouchableOpacity style={styles.editChip} onPress={() => navigation.navigate('Movies')}>
-                      <Text style={styles.editChipText}>✏️</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))
+                  ))
+              }
+            </>
           )}
 
         </View>
       </ScrollView>
 
-      {/* ── Modal Criar/Editar Produto ── */}
+      {/* ── Modal Produto ── */}
       <Modal visible={productModal} animationType="slide" transparent onRequestClose={() => setProductModal(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalBox}>
               <ScrollView keyboardShouldPersistTaps="handled">
                 <Text style={styles.modalTitle}>{editingProduct ? 'Editar produto' : 'Novo produto'}</Text>
-
                 {([
-                  { key: 'name',        label: 'Nome *',          placeholder: 'Ex: Pipoca Grande', keyboard: 'default' as const },
-                  { key: 'price',       label: 'Preço (R$) *',    placeholder: '12.90',             keyboard: 'decimal-pad' as const },
-                  { key: 'stock',       label: 'Estoque (un.)',   placeholder: '50',               keyboard: 'number-pad' as const },
-                  { key: 'description', label: 'Descrição',       placeholder: 'Descrição do produto', keyboard: 'default' as const },
-                  { key: 'image_url',   label: 'URL da imagem',   placeholder: 'https://...',       keyboard: 'url' as const },
+                  { key: 'name',        label: 'Nome *',        placeholder: 'Ex: Pipoca Grande',    keyboard: 'default' as const },
+                  { key: 'price',       label: 'Preço (R$) *',  placeholder: '12.90',                keyboard: 'decimal-pad' as const },
+                  { key: 'stock',       label: 'Estoque (un.)', placeholder: '50',                   keyboard: 'number-pad' as const },
+                  { key: 'description', label: 'Descrição',     placeholder: 'Descrição do produto', keyboard: 'default' as const },
+                  { key: 'image_url',   label: 'URL da imagem', placeholder: 'https://...',           keyboard: 'url' as const },
                 ] as const).map(field => (
                   <View key={field.key} style={styles.modalField}>
                     <Text style={styles.modalLabel}>{field.label}</Text>
@@ -346,20 +471,113 @@ export default function AdminScreen({ navigation }: any) {
                     />
                   </View>
                 ))}
-
-                <TouchableOpacity
-                  style={[styles.modalSaveBtn, savingProduct && { opacity: 0.6 }]}
-                  onPress={handleSaveProduct}
-                  disabled={savingProduct}
-                >
-                  {savingProduct
-                    ? <ActivityIndicator color="#fff" />
-                    : <Text style={styles.modalSaveBtnText}>{editingProduct ? 'Salvar alterações' : 'Criar produto'}</Text>
-                  }
+                <TouchableOpacity style={[styles.modalSaveBtn, savingProduct && { opacity: 0.6 }]} onPress={handleSaveProduct} disabled={savingProduct}>
+                  {savingProduct ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalSaveBtnText}>{editingProduct ? 'Salvar alterações' : 'Criar produto'}</Text>}
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setProductModal(false)} disabled={savingProduct}>
                   <Text style={styles.modalCancelText}>Cancelar</Text>
                 </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Modal Filme ── */}
+      <Modal visible={movieModal} animationType="slide" transparent onRequestClose={() => !savingMovie && setMovieModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.movieModalBox}>
+              <Text style={styles.modalTitle}>{editingMovie ? '✏️ Editar Filme' : '🎬 Novo Filme'}</Text>
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+
+                {/* ── Poster picker ── */}
+                <View style={styles.posterSection}>
+                  <Text style={styles.posterSectionTitle}>🖼 Poster do Filme</Text>
+                  <TouchableOpacity
+                    style={styles.posterPicker}
+                    onPress={handlePickPoster}
+                    disabled={uploadingPoster || savingMovie}
+                    activeOpacity={0.75}
+                  >
+                    {uploadingPoster ? (
+                      <View style={styles.posterPickerInner}>
+                        <ActivityIndicator color={COLORS.primary} size="large" />
+                        <Text style={styles.posterUploadingText}>Enviando imagem...</Text>
+                      </View>
+                    ) : posterSource ? (
+                      <View style={styles.posterPreviewWrapper}>
+                        <Image source={posterSource} style={styles.posterPreview} resizeMode="cover" />
+                        <View style={styles.posterChangeOverlay}>
+                          <Text style={styles.posterChangeText}>📷 Trocar imagem</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.posterPickerInner}>
+                        <Text style={{ fontSize: 36, marginBottom: 8 }}>📷</Text>
+                        <Text style={styles.posterPickerText}>Toque para adicionar poster</Text>
+                        <Text style={styles.posterPickerHint}>Câmera ou galeria • Máx 5MB</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  <View style={styles.posterUrlRow}>
+                    <Text style={styles.posterUrlLabel}>ou cole uma URL:</Text>
+                    <TextInput
+                      style={styles.posterUrlInput}
+                      placeholder="https://..."
+                      placeholderTextColor={COLORS.textMuted}
+                      value={movieForm.poster_url}
+                      onChangeText={v => { setMovieForm(f => ({ ...f, poster_url: v })); if (v) setLocalPosterUri(null); }}
+                      keyboardType="url"
+                      autoCapitalize="none"
+                      editable={!savingMovie && !uploadingPoster}
+                    />
+                  </View>
+                </View>
+
+                {/* ── Campos ── */}
+                {([
+                  { label: 'Título *',         key: 'title',            placeholder: 'Ex: Duna: Parte Dois' },
+                  { label: 'Descrição',        key: 'description',      placeholder: 'Sinopse do filme', multi: true },
+                  { label: 'Gênero',           key: 'genre',            placeholder: 'Ex: Ficção Científica' },
+                  { label: 'Duração (min)',    key: 'duration_minutes', placeholder: 'Ex: 150', keyboard: 'numeric' },
+                  { label: 'Diretor',          key: 'director',         placeholder: 'Ex: Denis Villeneuve' },
+                  { label: 'Elenco',           key: 'cast_info',        placeholder: 'Timothée Chalamet, Zendaya', multi: true },
+                  { label: 'Classificação',   key: 'rating',           placeholder: 'Livre, 10+, 12+, 14+, 16+, 18+' },
+                  { label: 'Data da Sessão *', key: 'session_date',     placeholder: 'AAAA-MM-DD' },
+                  { label: 'Horário *',        key: 'session_time',     placeholder: 'HH:MM' },
+                  { label: 'Sala',             key: 'room',             placeholder: 'Ex: Sala 1' },
+                  { label: 'Preço (R$)',       key: 'price',            placeholder: '0.00', keyboard: 'numeric' },
+                  { label: 'Data de Estreia', key: 'premiere_date',    placeholder: 'AAAA-MM-DD' },
+                  { label: 'Em cartaz até',   key: 'on_display_until', placeholder: 'AAAA-MM-DD' },
+                ] as const).map(field => (
+                  <View key={field.key} style={styles.modalField}>
+                    <Text style={styles.modalLabel}>{field.label}</Text>
+                    <TextInput
+                      style={[styles.modalInput, (field as any).multi ? styles.modalInputMulti : null]}
+                      placeholder={field.placeholder}
+                      placeholderTextColor={COLORS.textMuted}
+                      value={(movieForm as any)[field.key]}
+                      onChangeText={v => setMovieForm(f => ({ ...f, [field.key]: v }))}
+                      keyboardType={(field as any).keyboard || 'default'}
+                      multiline={(field as any).multi}
+                      numberOfLines={(field as any).multi ? 3 : 1}
+                      editable={!savingMovie}
+                    />
+                  </View>
+                ))}
+
+                <TouchableOpacity
+                  style={[styles.modalSaveBtn, (savingMovie || uploadingPoster) && { opacity: 0.6 }]}
+                  onPress={handleSaveMovie}
+                  disabled={savingMovie || uploadingPoster}
+                >
+                  {savingMovie ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalSaveBtnText}>{editingMovie ? 'Salvar alterações' : 'Criar filme'}</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setMovieModal(false)} disabled={savingMovie}>
+                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+                <View style={{ height: SPACING.xl }} />
               </ScrollView>
             </View>
           </View>
@@ -390,7 +608,7 @@ const styles = StyleSheet.create({
   tabLabel: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
   tabLabelActive: { color: '#fff' },
   tabContent: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.xxl },
-  // Orders
+  // Pedidos
   orderCard: { backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: '#2a2a2a' },
   orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   orderId: { fontSize: 15, fontWeight: 'bold', color: COLORS.text },
@@ -402,7 +620,7 @@ const styles = StyleSheet.create({
   orderFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
   orderTotal: { color: COLORS.gold, fontSize: 14, fontWeight: 'bold' },
   orderDate: { color: COLORS.textMuted, fontSize: 12 },
-  // Products
+  // Produtos
   productCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: '#2a2a2a' },
   productEmoji: { width: 46, height: 46, backgroundColor: '#111', borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
   productInfo: { flex: 1, marginLeft: SPACING.md },
@@ -412,36 +630,51 @@ const styles = StyleSheet.create({
   productPrice: { color: COLORS.gold, fontSize: 14, fontWeight: 'bold' },
   stockBadge: { borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 2 },
   stockText: { fontSize: 11, fontWeight: 'bold' },
-  // Movies
-  movieCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: '#2a2a2a' },
-  movieEmoji: { width: 46, height: 46, backgroundColor: '#111', borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
-  movieInfo: { flex: 1, marginLeft: SPACING.md },
+  // Filmes
+  movieCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderRadius: RADIUS.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: '#2a2a2a', overflow: 'hidden' },
+  moviePoster: { width: 60, height: 90 },
+  movieInfo: { flex: 1, padding: SPACING.sm },
   movieTitle: { color: COLORS.text, fontSize: 14, fontWeight: 'bold' },
+  movieGenre: { color: COLORS.primary, fontSize: 11, marginTop: 2 },
   movieMeta: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
-  movieRoom: { color: COLORS.primary, fontSize: 11, marginTop: 2 },
-  editChip: { width: 36, height: 36, backgroundColor: '#1a3a5c', borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
-  editChipText: { fontSize: 18 },
-  // Empty
-  empty: { alignItems: 'center', paddingVertical: SPACING.xl },
-  emptyText: { color: COLORS.textSecondary, fontSize: 15 },
-  goBtn: { marginTop: SPACING.md, backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingHorizontal: SPACING.lg, paddingVertical: 10 },
-  goBtnText: { color: '#fff', fontWeight: 'bold' },
-  // Produto CRUD
-  newProductBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 11, alignItems: 'center', marginBottom: SPACING.sm },
-  newProductBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  movieRoom: { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
+  moviePrice: { color: COLORS.gold, fontSize: 12, marginTop: 2, fontWeight: 'bold' },
+  movieActions: { paddingRight: SPACING.sm, gap: 6, alignItems: 'center' },
+  // Shared
+  newItemBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 11, alignItems: 'center', marginBottom: SPACING.sm },
+  newItemBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
   productActions: { flexDirection: 'row', gap: 6, marginTop: 4 },
   actionBtn: { width: 32, height: 32, backgroundColor: '#1a3a5c', borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
   actionBtnDanger: { backgroundColor: '#3B0000' },
   actionBtnText: { fontSize: 15 },
+  empty: { alignItems: 'center', paddingVertical: SPACING.xl },
+  emptyText: { color: COLORS.textSecondary, fontSize: 15 },
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   modalBox: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.lg, maxHeight: '90%' },
+  movieModalBox: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.lg, maxHeight: '95%', flex: 1 },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.text, marginBottom: SPACING.lg },
   modalField: { marginBottom: SPACING.md },
   modalLabel: { fontSize: 13, color: COLORS.textSecondary, marginBottom: 6 },
   modalInput: { backgroundColor: '#111', borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, paddingVertical: 12, color: COLORS.text, fontSize: 15, borderWidth: 1, borderColor: '#333' },
+  modalInputMulti: { height: 80, textAlignVertical: 'top' },
   modalSaveBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', marginTop: SPACING.sm },
   modalSaveBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
   modalCancelBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 4 },
   modalCancelText: { color: COLORS.textMuted, fontSize: 14 },
+  // Poster picker
+  posterSection: { marginBottom: SPACING.lg, backgroundColor: '#111', borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1, borderColor: '#333' },
+  posterSectionTitle: { fontSize: 13, fontWeight: 'bold', color: COLORS.textSecondary, marginBottom: SPACING.sm },
+  posterPicker: { borderRadius: RADIUS.md, overflow: 'hidden', borderWidth: 2, borderStyle: 'dashed', borderColor: COLORS.primary + '55', backgroundColor: '#0a0a0a', minHeight: 140, justifyContent: 'center', alignItems: 'center' },
+  posterPickerInner: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.lg },
+  posterPickerText: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  posterPickerHint: { color: COLORS.textMuted, fontSize: 11, marginTop: 4 },
+  posterPreviewWrapper: { width: '100%', position: 'relative' },
+  posterPreview: { width: '100%', height: 200, borderRadius: RADIUS.sm },
+  posterChangeOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.65)', paddingVertical: SPACING.sm, alignItems: 'center' },
+  posterChangeText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
+  posterUploadingText: { color: COLORS.textSecondary, marginTop: SPACING.sm, fontSize: 13 },
+  posterUrlRow: { marginTop: SPACING.md },
+  posterUrlLabel: { fontSize: 12, color: COLORS.textMuted, marginBottom: 6 },
+  posterUrlInput: { backgroundColor: '#1a1a1a', borderRadius: RADIUS.sm, paddingHorizontal: SPACING.md, paddingVertical: 10, color: COLORS.text, fontSize: 13, borderWidth: 1, borderColor: '#333' },
 });

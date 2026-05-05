@@ -13,7 +13,7 @@ const getBaseURL = () => {
 
 const api = axios.create({
   baseURL: getBaseURL(),
-  timeout: 10000,
+  timeout: 15000,
 });
 
 api.interceptors.request.use(async (config) => {
@@ -43,6 +43,32 @@ export const verifyResetCode = (email: string, code: string) =>
   api.post('/auth/verify-reset-code', { email, code });
 export const resetPassword = (email: string, code: string, new_password: string) =>
   api.post('/auth/reset-password', { email, code, new_password });
+
+// ── Upload de Imagem ─────────────────────────────────────
+export const uploadImage = async (imageUri: string, filename?: string): Promise<string> => {
+  const token = await AsyncStorage.getItem('@pipocalizando:token');
+  const formData = new FormData();
+
+  const ext = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+  const mimeTypes: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+  };
+  const type = mimeTypes[ext] || 'image/jpeg';
+  const name = filename || `poster-${Date.now()}.${ext}`;
+
+  formData.append('image', { uri: imageUri, type, name } as any);
+
+  const response = await axios.post(`${getBaseURL()}/upload/image`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      Authorization: `Bearer ${token}`,
+    },
+    timeout: 30000,
+  });
+
+  return response.data.url as string;
+};
 
 // ── Filmes ───────────────────────────────────────────────
 export const getMovies = (params?: any) =>

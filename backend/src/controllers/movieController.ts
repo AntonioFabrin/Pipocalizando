@@ -1,13 +1,14 @@
 import { Request, Response } from 'express';
 import pool from '../config/db';
 
-// ─── Categorias ──────────────────────────────────────────
-export const getCategories = async (req: Request, res: Response): Promise<void> => {
+// ─── Categorias de filmes ────────────────────────────────────────────────────
+
+export const getCategories = async (_req: Request, res: Response): Promise<void> => {
   try {
     const [rows] = await pool.query('SELECT * FROM movie_categories WHERE is_active = 1 ORDER BY name');
     res.json(rows);
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
@@ -20,21 +21,22 @@ export const createCategory = async (req: Request, res: Response): Promise<void>
       [name, description || null, emoji || '🎬']
     );
     res.status(201).json({ message: 'Categoria criada!', id: result.insertId });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
 export const updateCategory = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, description, emoji, is_active } = req.body;
-    await pool.query(
+    const [result]: any = await pool.query(
       'UPDATE movie_categories SET name=?, description=?, emoji=?, is_active=? WHERE id=?',
       [name, description || null, emoji || '🎬', is_active ?? 1, req.params.id]
     );
+    if (result.affectedRows === 0) { res.status(404).json({ message: 'Categoria não encontrada.' }); return; }
     res.json({ message: 'Categoria atualizada!' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
@@ -42,18 +44,19 @@ export const deleteCategory = async (req: Request, res: Response): Promise<void>
   try {
     await pool.query('UPDATE movie_categories SET is_active = 0 WHERE id = ?', [req.params.id]);
     res.json({ message: 'Categoria removida.' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
-// ─── Salas ───────────────────────────────────────────────
-export const getRooms = async (req: Request, res: Response): Promise<void> => {
+// ─── Salas ───────────────────────────────────────────────────────────────────
+
+export const getRooms = async (_req: Request, res: Response): Promise<void> => {
   try {
     const [rows] = await pool.query('SELECT * FROM movie_rooms WHERE is_active = 1 ORDER BY name');
     res.json(rows);
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
@@ -66,21 +69,22 @@ export const createRoom = async (req: Request, res: Response): Promise<void> => 
       [name, capacity || 100, type || 'standard', has_3d || 0, has_accessibility ?? 1]
     );
     res.status(201).json({ message: 'Sala criada!', id: result.insertId });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
 export const updateRoom = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, capacity, type, has_3d, has_accessibility, is_active } = req.body;
-    await pool.query(
+    const [result]: any = await pool.query(
       'UPDATE movie_rooms SET name=?, capacity=?, type=?, has_3d=?, has_accessibility=?, is_active=? WHERE id=?',
       [name, capacity || 100, type || 'standard', has_3d || 0, has_accessibility ?? 1, is_active ?? 1, req.params.id]
     );
+    if (result.affectedRows === 0) { res.status(404).json({ message: 'Sala não encontrada.' }); return; }
     res.json({ message: 'Sala atualizada!' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
@@ -88,13 +92,14 @@ export const deleteRoom = async (req: Request, res: Response): Promise<void> => 
   try {
     await pool.query('UPDATE movie_rooms SET is_active = 0 WHERE id = ?', [req.params.id]);
     res.json({ message: 'Sala removida.' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
-// ─── Sessões ─────────────────────────────────────────────
-export const getSessions = async (req: Request, res: Response): Promise<void> => {
+// ─── Sessões ─────────────────────────────────────────────────────────────────
+
+export const getSessions = async (_req: Request, res: Response): Promise<void> => {
   try {
     const [rows] = await pool.query(`
       SELECT ms.*, m.title, m.rating, mr.name as room_name, mr.type as room_type
@@ -105,8 +110,8 @@ export const getSessions = async (req: Request, res: Response): Promise<void> =>
       ORDER BY ms.session_date, ms.session_time
     `);
     res.json(rows);
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
@@ -121,21 +126,22 @@ export const createSession = async (req: Request, res: Response): Promise<void> 
       [movie_id, room_id, session_date, session_time, available_seats || 100, language || 'dublado']
     );
     res.status(201).json({ message: 'Sessão criada!', id: result.insertId });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
 export const updateSession = async (req: Request, res: Response): Promise<void> => {
   try {
     const { movie_id, room_id, session_date, session_time, available_seats, language, is_active } = req.body;
-    await pool.query(
+    const [result]: any = await pool.query(
       'UPDATE movie_sessions SET movie_id=?, room_id=?, session_date=?, session_time=?, available_seats=?, language=?, is_active=? WHERE id=?',
       [movie_id, room_id, session_date, session_time, available_seats || 100, language || 'dublado', is_active ?? 1, req.params.id]
     );
+    if (result.affectedRows === 0) { res.status(404).json({ message: 'Sessão não encontrada.' }); return; }
     res.json({ message: 'Sessão atualizada!' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
@@ -143,12 +149,13 @@ export const deleteSession = async (req: Request, res: Response): Promise<void> 
   try {
     await pool.query('UPDATE movie_sessions SET is_active = 0 WHERE id = ?', [req.params.id]);
     res.json({ message: 'Sessão removida.' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
-// ─── Filmes ──────────────────────────────────────────────
+// ─── Filmes ───────────────────────────────────────────────────────────────────
+
 export const getAll = async (req: Request, res: Response): Promise<void> => {
   try {
     const { category, status, rating, room } = req.query;
@@ -172,8 +179,8 @@ export const getAll = async (req: Request, res: Response): Promise<void> => {
     query += ' ORDER BY m.session_date ASC, m.session_time ASC';
     const [rows] = await pool.query(query, params);
     res.json(rows);
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
@@ -193,8 +200,6 @@ export const getById = async (req: Request, res: Response): Promise<void> => {
       WHERE m.id = ? AND m.is_active = 1
     `, [req.params.id]);
     if (rows.length === 0) { res.status(404).json({ message: 'Filme não encontrado.' }); return; }
-
-    // Busca as sessões do filme
     const [sessions] = await pool.query(`
       SELECT ms.*, mr.name as room_name, mr.type as room_type
       FROM movie_sessions ms
@@ -202,10 +207,9 @@ export const getById = async (req: Request, res: Response): Promise<void> => {
       WHERE ms.movie_id = ? AND ms.is_active = 1
       ORDER BY ms.session_date, ms.session_time
     `, [req.params.id]);
-
     res.json({ ...rows[0], sessions });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
@@ -219,8 +223,8 @@ export const create = async (req: Request, res: Response): Promise<void> => {
       [title, description || null, category_id || null, genre || null, duration_minutes || null, director || null, cast_info || null, rating || null, poster_url || null, session_date || null, session_time || null, room || null, room_id || null, price || 0, premiere_date || null, on_display_until || null, status || 'coming_soon']
     );
     res.status(201).json({ message: 'Filme criado!', id: result.insertId });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
@@ -234,8 +238,8 @@ export const update = async (req: Request, res: Response): Promise<void> => {
     );
     if (result.affectedRows === 0) { res.status(404).json({ message: 'Filme não encontrado.' }); return; }
     res.json({ message: 'Filme atualizado!' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };
 
@@ -243,7 +247,7 @@ export const remove = async (req: Request, res: Response): Promise<void> => {
   try {
     await pool.query('UPDATE movies SET is_active = 0 WHERE id = ?', [req.params.id]);
     res.json({ message: 'Filme removido.' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno', error });
+  } catch {
+    res.status(500).json({ message: 'Erro interno' });
   }
 };

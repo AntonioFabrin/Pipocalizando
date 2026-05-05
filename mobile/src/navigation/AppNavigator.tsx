@@ -11,6 +11,7 @@ import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import MoviesScreen from '../screens/MoviesScreen';
+import MovieDetailScreen from '../screens/MovieDetailScreen';
 import HomeScreen from '../screens/HomeScreen';
 import PedidosScreen from '../screens/PedidosScreen';
 import ContaScreen from '../screens/ContaScreen';
@@ -38,34 +39,22 @@ function CustomerTabs() {
       <Tab.Screen
         name="Sessoes"
         component={MoviesScreen}
-        options={{
-          title: 'Sessões',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🎬</Text>,
-        }}
+        options={{ title: 'Sessões', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🎬</Text> }}
       />
       <Tab.Screen
         name="Cardapio"
         component={HomeScreen}
-        options={{
-          title: 'Cardápio',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🍿</Text>,
-        }}
+        options={{ title: 'Cardápio', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🍿</Text> }}
       />
       <Tab.Screen
         name="Pedidos"
         component={PedidosScreen}
-        options={{
-          title: 'Pedidos',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🛒</Text>,
-        }}
+        options={{ title: 'Pedidos', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🛒</Text> }}
       />
       <Tab.Screen
         name="Conta"
         component={ContaScreen}
-        options={{
-          title: 'Conta',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>👤</Text>,
-        }}
+        options={{ title: 'Conta', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>👤</Text> }}
       />
     </Tab.Navigator>
   );
@@ -86,42 +75,27 @@ function SellerTabs() {
       <Tab.Screen
         name="Sessoes"
         component={MoviesScreen}
-        options={{
-          title: 'Sessões',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🎬</Text>,
-        }}
+        options={{ title: 'Sessões', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🎬</Text> }}
       />
       <Tab.Screen
         name="Cardapio"
         component={HomeScreen}
-        options={{
-          title: 'Cardápio',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🍿</Text>,
-        }}
+        options={{ title: 'Cardápio', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🍿</Text> }}
       />
       <Tab.Screen
         name="Scanner"
         component={ScannerScreen}
-        options={{
-          title: 'Scanner',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🎫</Text>,
-        }}
+        options={{ title: 'Scanner', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>🎫</Text> }}
       />
       <Tab.Screen
         name="Painel"
         component={AdminScreen}
-        options={{
-          title: 'Painel',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>⚙️</Text>,
-        }}
+        options={{ title: 'Painel', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>⚙️</Text> }}
       />
       <Tab.Screen
         name="Conta"
         component={ContaScreen}
-        options={{
-          title: 'Conta',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>👤</Text>,
-        }}
+        options={{ title: 'Conta', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>👤</Text> }}
       />
     </Tab.Navigator>
   );
@@ -144,18 +118,20 @@ export default function AppNavigator() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
           <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
+            <Stack.Screen name="Login"          component={LoginScreen} />
+            <Stack.Screen name="Register"       component={RegisterScreen} />
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </>
         ) : isStaff ? (
           <>
-            <Stack.Screen name="Main" component={SellerTabs} />
+            <Stack.Screen name="Main"         component={SellerTabs} />
+            <Stack.Screen name="MovieDetail"  component={MovieDetailScreen} />
             <Stack.Screen name="OrderSuccess" component={OrderSuccessScreen} />
           </>
         ) : (
           <>
-            <Stack.Screen name="Main" component={CustomerTabs} />
+            <Stack.Screen name="Main"         component={CustomerTabs} />
+            <Stack.Screen name="MovieDetail"  component={MovieDetailScreen} />
             <Stack.Screen name="OrderSuccess" component={OrderSuccessScreen} />
           </>
         )}
