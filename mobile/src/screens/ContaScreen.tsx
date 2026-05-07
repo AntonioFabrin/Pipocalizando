@@ -53,6 +53,19 @@ export default function ContaScreen({ navigation }: any) {
 
   useEffect(() => { fetchData(); }, []);
 
+  const handleLogout = () => {
+    Alert.alert('Sair', 'Deseja sair da sua conta?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sair',
+        style: 'destructive',
+        onPress: () => {
+          logout().catch(e => console.error('Erro ao fazer logout:', e));
+        },
+      },
+    ]);
+  };
+
   const formatDate = (d: string) =>
     new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
@@ -87,13 +100,7 @@ export default function ContaScreen({ navigation }: any) {
             </View>
           </View>
         </View>
-        <TouchableOpacity
-          style={styles.logoutBtn}
-          onPress={() => Alert.alert('Sair', 'Deseja sair da sua conta?', [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Sair', style: 'destructive', onPress: logout },
-          ])}
-        >
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Text style={styles.logoutText}>Sair</Text>
         </TouchableOpacity>
       </View>
@@ -185,13 +192,7 @@ export default function ContaScreen({ navigation }: any) {
               })()}
 
               {/* Botão sair */}
-              <TouchableOpacity
-                style={styles.logoutBtnFull}
-                onPress={() => Alert.alert('Sair', 'Deseja sair da sua conta?', [
-                  { text: 'Cancelar', style: 'cancel' },
-                  { text: 'Sair', style: 'destructive', onPress: logout },
-                ])}
-              >
+              <TouchableOpacity style={styles.logoutBtnFull} onPress={handleLogout}>
                 <Text style={styles.logoutBtnText}>🚪 Sair da conta</Text>
               </TouchableOpacity>
             </>

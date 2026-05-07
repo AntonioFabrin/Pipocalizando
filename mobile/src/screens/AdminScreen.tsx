@@ -1,15 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, ActivityIndicator,
+  View, Text, StyleSheet, ActivityIndicator,
   RefreshControl, TouchableOpacity, Alert, ScrollView,
   Modal, TextInput, KeyboardAvoidingView, Platform, Image,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import {
   getOrders, updateOrderStatus,
   getProducts, createProduct, updateProduct, deleteProduct,
-  getMovies, createMovie, updateMovie, deleteMovie,
-  uploadImage,
+  getMovies, deleteMovie,
 } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
@@ -29,12 +27,6 @@ const STATUS_MAP: Record<string, { label: string; color: string; emoji: string }
 type TabType = 'orders' | 'products' | 'movies';
 
 const EMPTY_PRODUCT = { name: '', price: '', stock: '', description: '', image_url: '', category_name: '' };
-const EMPTY_MOVIE = {
-  title: '', description: '', genre: '', duration_minutes: '',
-  director: '', cast_info: '', rating: '', poster_url: '',
-  session_date: '', session_time: '', room: '', price: '',
-  premiere_date: '', on_display_until: '',
-};
 
 export default function AdminScreen({ navigation }: any) {
   const { user, logout } = useAuth();
@@ -50,14 +42,6 @@ export default function AdminScreen({ navigation }: any) {
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [productForm, setProductForm] = useState(EMPTY_PRODUCT);
   const [savingProduct, setSavingProduct] = useState(false);
-
-  // ── Estado modal filme ────────────────────────────────
-  const [movieModal, setMovieModal] = useState(false);
-  const [editingMovie, setEditingMovie] = useState<any>(null);
-  const [movieForm, setMovieForm] = useState(EMPTY_MOVIE);
-  const [savingMovie, setSavingMovie] = useState(false);
-  const [uploadingPoster, setUploadingPoster] = useState(false);
-  const [localPosterUri, setLocalPosterUri] = useState<string | null>(null);
 
   // ── Produto handlers ──────────────────────────────────
   const openCreateProduct = () => {
@@ -119,112 +103,17 @@ export default function AdminScreen({ navigation }: any) {
     ]);
   };
 
-  // ── Filme handlers ────────────────────────────────────
+  // ── Filme handlers → navega para tela dedicada ────────
   const openCreateMovie = () => {
-    setEditingMovie(null);
-    setMovieForm(EMPTY_MOVIE);
-    setLocalPosterUri(null);
-    setMovieModal(true);
+    navigation.navigate('CreateMovie');
   };
 
   const openEditMovie = (m: any) => {
-    setEditingMovie(m);
-    setMovieForm({
-      title: m.title || '',
-      description: m.description || '',
-      genre: m.genre || '',
-      duration_minutes: m.duration_minutes?.toString() || '',
-      director: m.director || '',
-      cast_info: m.cast_info || '',
-      rating: m.rating || '',
-      poster_url: m.poster_url || '',
-      session_date: m.session_date?.slice(0, 10) || '',
-      session_time: m.session_time || '',
-      room: m.room || '',
-      price: m.price?.toString() || '0',
-      premiere_date: m.premiere_date?.slice(0, 10) || '',
-      on_display_until: m.on_display_until?.slice(0, 10) || '',
-    });
-    setLocalPosterUri(null);
-    setMovieModal(true);
-  };
-
-  const handlePickPoster = () => {
-    Alert.alert('📸 Poster do Filme', 'Escolha a origem:', [
-      { text: '📷 Câmera',   onPress: () => openImagePicker('camera') },
-      { text: '🖼 Galeria', onPress: () => openImagePicker('gallery') },
-      { text: 'Cancelar', style: 'cancel' },
-    ]);
-  };
-
-  const openImagePicker = async (source: 'camera' | 'gallery') => {
-    try {
-      let result: ImagePicker.ImagePickerResult;
-      if (source === 'camera') {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') { Alert.alert('Permissão negada', 'Permita o acesso à câmera nas configurações.'); return; }
-        result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true, aspect: [2, 3], quality: 0.85,
-        });
-      } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') { Alert.alert('Permissão negada', 'Permita o acesso à galeria nas configurações.'); return; }
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true, aspect: [2, 3], quality: 0.85,
-        });
-      }
-
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        setLocalPosterUri(asset.uri);
-        setUploadingPoster(true);
-        try {
-          const url = await uploadImage(asset.uri, `poster-${Date.now()}.jpg`);
-          setMovieForm(f => ({ ...f, poster_url: url }));
-          Alert.alert('✅ Sucesso', 'Imagem enviada!');
-        } catch (err: any) {
-          Alert.alert('Erro no upload', err?.response?.data?.message || 'Falha ao enviar a imagem.');
-          setLocalPosterUri(null);
-        } finally {
-          setUploadingPoster(false);
-        }
-      }
-    } catch {
-      Alert.alert('Erro', 'Não foi possível abrir o seletor de imagem.');
-    }
-  };
-
-  const handleSaveMovie = async () => {
-    if (!movieForm.title || !movieForm.session_date || !movieForm.session_time) {
-      Alert.alert('Atenção', 'Título, data e horário são obrigatórios.');
-      return;
-    }
-    if (uploadingPoster) { Alert.alert('Aguarde', 'O upload da imagem ainda está em andamento...'); return; }
-    setSavingMovie(true);
-    try {
-      const payload = {
-        ...movieForm,
-        duration_minutes: movieForm.duration_minutes ? parseInt(movieForm.duration_minutes) : null,
-        price: movieForm.price ? parseFloat(movieForm.price) : 0,
-      };
-      if (editingMovie) {
-        await updateMovie(editingMovie.id, payload);
-      } else {
-        await createMovie(payload);
-      }
-      setMovieModal(false);
-      fetchAll();
-    } catch (e: any) {
-      Alert.alert('Erro', e?.response?.data?.message || 'Erro ao salvar filme.');
-    } finally {
-      setSavingMovie(false);
-    }
+    navigation.navigate('CreateMovie', { movie: m });
   };
 
   const handleDeleteMovie = (m: any) => {
-    Alert.alert('Remover sessão', `Deseja remover "${m.title}"?`, [
+    Alert.alert('Remover filme', `Deseja remover "${m.title}"?`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Remover', style: 'destructive',
@@ -254,6 +143,14 @@ export default function AdminScreen({ navigation }: any) {
   }, []);
 
   useEffect(() => { fetchAll(); }, []);
+
+  // Recarrega ao voltar para esta tela (após criar/editar filme)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchAll();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const handleStatusChange = (orderId: number, currentStatus: string) => {
     const options = STATUS_OPTIONS.filter(s => s !== currentStatus).map(s => ({
@@ -291,12 +188,6 @@ export default function AdminScreen({ navigation }: any) {
     { key: 'products', label: 'Produtos', emoji: '🍿' },
     { key: 'movies',   label: 'Filmes',   emoji: '🎬' },
   ];
-
-  const posterSource = localPosterUri
-    ? { uri: localPosterUri }
-    : movieForm.poster_url
-      ? { uri: movieForm.poster_url }
-      : null;
 
   return (
     <View style={styles.container}>
@@ -401,14 +292,20 @@ export default function AdminScreen({ navigation }: any) {
             </>
           )}
 
-          {/* ── Tab: Filmes (CRUD inline) ── */}
+          {/* ── Tab: Filmes → abre tela dedicada ── */}
           {tab === 'movies' && (
             <>
               <TouchableOpacity style={styles.newItemBtn} onPress={openCreateMovie}>
-                <Text style={styles.newItemBtnText}>+ Novo filme / sessão</Text>
+                <Text style={styles.newItemBtnText}>🎬 Anunciar novo filme</Text>
               </TouchableOpacity>
               {movies.length === 0
-                ? <View style={styles.empty}><Text style={styles.emptyText}>Nenhum filme cadastrado.</Text></View>
+                ? (
+                  <View style={styles.empty}>
+                    <Text style={{ fontSize: 48 }}>🎞️</Text>
+                    <Text style={styles.emptyText}>Nenhum filme cadastrado.</Text>
+                    <Text style={styles.emptyHint}>Toque em "Anunciar novo filme" para começar!</Text>
+                  </View>
+                )
                 : movies.map((m: any) => (
                     <View key={m.id} style={styles.movieCard}>
                       <Image
@@ -424,6 +321,19 @@ export default function AdminScreen({ navigation }: any) {
                         </Text>
                         {m.room ? <Text style={styles.movieRoom}>🏛 {m.room}</Text> : null}
                         {m.price > 0 ? <Text style={styles.moviePrice}>💰 R$ {Number(m.price).toFixed(2)}</Text> : null}
+                        <View style={[styles.statusPill, {
+                          backgroundColor:
+                            m.status === 'now_playing' ? COLORS.success + '22' :
+                            m.status === 'coming_soon' ? COLORS.primary + '22' : '#33333355'
+                        }]}>
+                          <Text style={[styles.statusPillText, {
+                            color:
+                              m.status === 'now_playing' ? COLORS.success :
+                              m.status === 'coming_soon' ? COLORS.primary : COLORS.textMuted
+                          }]}>
+                            {m.status === 'now_playing' ? '🎬 Em cartaz' : m.status === 'coming_soon' ? '📅 Em breve' : '🔚 Encerrado'}
+                          </Text>
+                        </View>
                       </View>
                       <View style={styles.movieActions}>
                         <TouchableOpacity style={styles.actionBtn} onPress={() => openEditMovie(m)}>
@@ -477,107 +387,6 @@ export default function AdminScreen({ navigation }: any) {
                 <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setProductModal(false)} disabled={savingProduct}>
                   <Text style={styles.modalCancelText}>Cancelar</Text>
                 </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* ── Modal Filme ── */}
-      <Modal visible={movieModal} animationType="slide" transparent onRequestClose={() => !savingMovie && setMovieModal(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.movieModalBox}>
-              <Text style={styles.modalTitle}>{editingMovie ? '✏️ Editar Filme' : '🎬 Novo Filme'}</Text>
-              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-
-                {/* ── Poster picker ── */}
-                <View style={styles.posterSection}>
-                  <Text style={styles.posterSectionTitle}>🖼 Poster do Filme</Text>
-                  <TouchableOpacity
-                    style={styles.posterPicker}
-                    onPress={handlePickPoster}
-                    disabled={uploadingPoster || savingMovie}
-                    activeOpacity={0.75}
-                  >
-                    {uploadingPoster ? (
-                      <View style={styles.posterPickerInner}>
-                        <ActivityIndicator color={COLORS.primary} size="large" />
-                        <Text style={styles.posterUploadingText}>Enviando imagem...</Text>
-                      </View>
-                    ) : posterSource ? (
-                      <View style={styles.posterPreviewWrapper}>
-                        <Image source={posterSource} style={styles.posterPreview} resizeMode="cover" />
-                        <View style={styles.posterChangeOverlay}>
-                          <Text style={styles.posterChangeText}>📷 Trocar imagem</Text>
-                        </View>
-                      </View>
-                    ) : (
-                      <View style={styles.posterPickerInner}>
-                        <Text style={{ fontSize: 36, marginBottom: 8 }}>📷</Text>
-                        <Text style={styles.posterPickerText}>Toque para adicionar poster</Text>
-                        <Text style={styles.posterPickerHint}>Câmera ou galeria • Máx 5MB</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                  <View style={styles.posterUrlRow}>
-                    <Text style={styles.posterUrlLabel}>ou cole uma URL:</Text>
-                    <TextInput
-                      style={styles.posterUrlInput}
-                      placeholder="https://..."
-                      placeholderTextColor={COLORS.textMuted}
-                      value={movieForm.poster_url}
-                      onChangeText={v => { setMovieForm(f => ({ ...f, poster_url: v })); if (v) setLocalPosterUri(null); }}
-                      keyboardType="url"
-                      autoCapitalize="none"
-                      editable={!savingMovie && !uploadingPoster}
-                    />
-                  </View>
-                </View>
-
-                {/* ── Campos ── */}
-                {([
-                  { label: 'Título *',         key: 'title',            placeholder: 'Ex: Duna: Parte Dois' },
-                  { label: 'Descrição',        key: 'description',      placeholder: 'Sinopse do filme', multi: true },
-                  { label: 'Gênero',           key: 'genre',            placeholder: 'Ex: Ficção Científica' },
-                  { label: 'Duração (min)',    key: 'duration_minutes', placeholder: 'Ex: 150', keyboard: 'numeric' },
-                  { label: 'Diretor',          key: 'director',         placeholder: 'Ex: Denis Villeneuve' },
-                  { label: 'Elenco',           key: 'cast_info',        placeholder: 'Timothée Chalamet, Zendaya', multi: true },
-                  { label: 'Classificação',   key: 'rating',           placeholder: 'Livre, 10+, 12+, 14+, 16+, 18+' },
-                  { label: 'Data da Sessão *', key: 'session_date',     placeholder: 'AAAA-MM-DD' },
-                  { label: 'Horário *',        key: 'session_time',     placeholder: 'HH:MM' },
-                  { label: 'Sala',             key: 'room',             placeholder: 'Ex: Sala 1' },
-                  { label: 'Preço (R$)',       key: 'price',            placeholder: '0.00', keyboard: 'numeric' },
-                  { label: 'Data de Estreia', key: 'premiere_date',    placeholder: 'AAAA-MM-DD' },
-                  { label: 'Em cartaz até',   key: 'on_display_until', placeholder: 'AAAA-MM-DD' },
-                ] as const).map(field => (
-                  <View key={field.key} style={styles.modalField}>
-                    <Text style={styles.modalLabel}>{field.label}</Text>
-                    <TextInput
-                      style={[styles.modalInput, (field as any).multi ? styles.modalInputMulti : null]}
-                      placeholder={field.placeholder}
-                      placeholderTextColor={COLORS.textMuted}
-                      value={(movieForm as any)[field.key]}
-                      onChangeText={v => setMovieForm(f => ({ ...f, [field.key]: v }))}
-                      keyboardType={(field as any).keyboard || 'default'}
-                      multiline={(field as any).multi}
-                      numberOfLines={(field as any).multi ? 3 : 1}
-                      editable={!savingMovie}
-                    />
-                  </View>
-                ))}
-
-                <TouchableOpacity
-                  style={[styles.modalSaveBtn, (savingMovie || uploadingPoster) && { opacity: 0.6 }]}
-                  onPress={handleSaveMovie}
-                  disabled={savingMovie || uploadingPoster}
-                >
-                  {savingMovie ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalSaveBtnText}>{editingMovie ? 'Salvar alterações' : 'Criar filme'}</Text>}
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setMovieModal(false)} disabled={savingMovie}>
-                  <Text style={styles.modalCancelText}>Cancelar</Text>
-                </TouchableOpacity>
-                <View style={{ height: SPACING.xl }} />
               </ScrollView>
             </View>
           </View>
@@ -640,6 +449,9 @@ const styles = StyleSheet.create({
   movieRoom: { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
   moviePrice: { color: COLORS.gold, fontSize: 12, marginTop: 2, fontWeight: 'bold' },
   movieActions: { paddingRight: SPACING.sm, gap: 6, alignItems: 'center' },
+  statusPill: { marginTop: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: RADIUS.sm, alignSelf: 'flex-start' },
+  statusPillText: { fontSize: 10, fontWeight: 'bold' },
+  emptyHint: { color: COLORS.textMuted, fontSize: 13, marginTop: 8 },
   // Shared
   newItemBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 11, alignItems: 'center', marginBottom: SPACING.sm },
   newItemBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
@@ -648,33 +460,16 @@ const styles = StyleSheet.create({
   actionBtnDanger: { backgroundColor: '#3B0000' },
   actionBtnText: { fontSize: 15 },
   empty: { alignItems: 'center', paddingVertical: SPACING.xl },
-  emptyText: { color: COLORS.textSecondary, fontSize: 15 },
-  // Modal
+  emptyText: { color: COLORS.textSecondary, fontSize: 15, marginTop: SPACING.sm },
+  // Modal produto
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   modalBox: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.lg, maxHeight: '90%' },
-  movieModalBox: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.lg, maxHeight: '95%', flex: 1 },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.text, marginBottom: SPACING.lg },
   modalField: { marginBottom: SPACING.md },
   modalLabel: { fontSize: 13, color: COLORS.textSecondary, marginBottom: 6 },
   modalInput: { backgroundColor: '#111', borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, paddingVertical: 12, color: COLORS.text, fontSize: 15, borderWidth: 1, borderColor: '#333' },
-  modalInputMulti: { height: 80, textAlignVertical: 'top' },
   modalSaveBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', marginTop: SPACING.sm },
   modalSaveBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
   modalCancelBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 4 },
   modalCancelText: { color: COLORS.textMuted, fontSize: 14 },
-  // Poster picker
-  posterSection: { marginBottom: SPACING.lg, backgroundColor: '#111', borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1, borderColor: '#333' },
-  posterSectionTitle: { fontSize: 13, fontWeight: 'bold', color: COLORS.textSecondary, marginBottom: SPACING.sm },
-  posterPicker: { borderRadius: RADIUS.md, overflow: 'hidden', borderWidth: 2, borderStyle: 'dashed', borderColor: COLORS.primary + '55', backgroundColor: '#0a0a0a', minHeight: 140, justifyContent: 'center', alignItems: 'center' },
-  posterPickerInner: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.lg },
-  posterPickerText: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
-  posterPickerHint: { color: COLORS.textMuted, fontSize: 11, marginTop: 4 },
-  posterPreviewWrapper: { width: '100%', position: 'relative' },
-  posterPreview: { width: '100%', height: 200, borderRadius: RADIUS.sm },
-  posterChangeOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.65)', paddingVertical: SPACING.sm, alignItems: 'center' },
-  posterChangeText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
-  posterUploadingText: { color: COLORS.textSecondary, marginTop: SPACING.sm, fontSize: 13 },
-  posterUrlRow: { marginTop: SPACING.md },
-  posterUrlLabel: { fontSize: 12, color: COLORS.textMuted, marginBottom: 6 },
-  posterUrlInput: { backgroundColor: '#1a1a1a', borderRadius: RADIUS.sm, paddingHorizontal: SPACING.md, paddingVertical: 10, color: COLORS.text, fontSize: 13, borderWidth: 1, borderColor: '#333' },
 });

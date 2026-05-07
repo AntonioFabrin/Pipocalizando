@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, ActivityIndicator, View } from 'react-native';
+import type { NavigationContainerRef } from '@react-navigation/native';
 
 import { useAuth } from '../context/AuthContext';
 import { COLORS } from '../types/theme';
@@ -16,6 +17,7 @@ import HomeScreen from '../screens/HomeScreen';
 import PedidosScreen from '../screens/PedidosScreen';
 import ContaScreen from '../screens/ContaScreen';
 import OrderSuccessScreen from '../screens/OrderSuccessScreen';
+import CreateMovieScreen from '../screens/CreateMovieScreen';
 
 // Staff
 import ScannerScreen from '../screens/ScannerScreen';
@@ -104,6 +106,16 @@ function SellerTabs() {
 // ─── Navigator raiz ───────────────────────────────────────
 export default function AppNavigator() {
   const { user, loading } = useAuth();
+  const navigationRef = useRef<NavigationContainerRef<any>>(null);
+
+  useEffect(() => {
+    if (!loading && !user && navigationRef.current?.isReady()) {
+      navigationRef.current.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    }
+  }, [user, loading]);
 
   if (loading) return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
@@ -114,7 +126,7 @@ export default function AppNavigator() {
   const isStaff = ['super_admin', 'manager', 'seller'].includes(user?.role || '');
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
           <>
@@ -124,9 +136,10 @@ export default function AppNavigator() {
           </>
         ) : isStaff ? (
           <>
-            <Stack.Screen name="Main"         component={SellerTabs} />
-            <Stack.Screen name="MovieDetail"  component={MovieDetailScreen} />
-            <Stack.Screen name="OrderSuccess" component={OrderSuccessScreen} />
+            <Stack.Screen name="Main"          component={SellerTabs} />
+            <Stack.Screen name="MovieDetail"   component={MovieDetailScreen} />
+            <Stack.Screen name="CreateMovie"   component={CreateMovieScreen} />
+            <Stack.Screen name="OrderSuccess"  component={OrderSuccessScreen} />
           </>
         ) : (
           <>
