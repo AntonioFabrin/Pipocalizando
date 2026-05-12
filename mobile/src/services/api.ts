@@ -3,10 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 const getBaseURL = () => {
-  if (Platform.OS === 'web') return 'http://localhost:3333/api';
-  if (Platform.OS === 'android') return 'http://10.0.2.2:3333/api';  // emulador Android
-  if (Platform.OS === 'ios') return 'http://localhost:3333/api';       // simulador iOS
-  // ATENÇÃO: em dispositivo físico, substitua pelo IP da sua máquina:
+  if (Platform.OS === 'web')     return 'http://localhost:3333/api';
+  if (Platform.OS === 'android') return 'http://10.0.2.2:3333/api';
+  if (Platform.OS === 'ios')     return 'http://localhost:3333/api';
+  // Dispositivo físico: troque pelo IP da sua máquina
   // return 'http://192.168.X.X:3333/api';
   return 'http://localhost:3333/api';
 };
@@ -45,23 +45,30 @@ export const resetPassword = (email: string, code: string, new_password: string)
   api.post('/auth/reset-password', { email, code, new_password });
 
 // ── Upload de Imagem ─────────────────────────────────────
-export const uploadImage = async (imageUri: string, filename?: string): Promise<string> => {
+export const uploadImage = async (
+  imageUri: string,
+  filename?: string,
+  webFile?: File,
+): Promise<string> => {
   const token = await AsyncStorage.getItem('@pipocalizando:token');
   const formData = new FormData();
 
-  const ext = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
-  const mimeTypes: Record<string, string> = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg',
-    png: 'image/png', webp: 'image/webp', gif: 'image/gif',
-  };
-  const type = mimeTypes[ext] || 'image/jpeg';
-  const name = filename || `poster-${Date.now()}.${ext}`;
-
-  formData.append('image', { uri: imageUri, type, name } as any);
+  if (Platform.OS === 'web' && webFile) {
+    formData.append('image', webFile, webFile.name);
+  } else {
+    const ext = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+    const mimeTypes: Record<string, string> = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg',
+      png: 'image/png',  webp: 'image/webp', gif: 'image/gif',
+    };
+    const type = mimeTypes[ext] || 'image/jpeg';
+    const name = filename || `poster-${Date.now()}.${ext}`;
+    formData.append('image', { uri: imageUri, type, name } as any);
+  }
 
   const response = await axios.post(`${getBaseURL()}/upload/image`, formData, {
     headers: {
-      'Content-Type': 'multipart/form-data',
+      ...(Platform.OS !== 'web' ? { 'Content-Type': 'multipart/form-data' } : {}),
       Authorization: `Bearer ${token}`,
     },
     timeout: 30000,
@@ -112,6 +119,30 @@ export const updateMovieSession = (id: number, data: object) =>
 export const deleteMovieSession = (id: number) =>
   api.delete(`/movie-sessions/${id}`);
 
+// ── Tickets ───────────────────────────────────────────────
+/**
+ * Compra ingressos para uma sessão.
+ * @param movie_id       ID do filme
+ * @param session_id     ID da sessão
+ * @param seats          Ex: ['A5', 'C3', 'E4']
+ */
+export const purchaseTickets = (data: {
+  movie_id:        number;
+  session_id:      number;
+  seats:           string[];
+}) => api.post('/tickets/purchase', data);
+
+/**
+ * Retorna os assentos já ocupados em uma sessão.
+ * Resposta: { occupied: ['A3', 'B7', ...] }
+ */
+export const getOccupiedSeats = (session_id: number) =>
+  api.get(`/tickets/occupied/${session_id}`);
+
+/** Valida (e marca como usado) um ticket pelo código. Staff only. */
+export const validateTicket = (ticket_code: string) =>
+  api.get(`/tickets/validate/${ticket_code}`);
+
 // ── Produtos ─────────────────────────────────────────────
 export const getProducts = () =>
   api.get('/products');
@@ -131,9 +162,5 @@ export const getOrders = () =>
   api.get('/orders');
 export const updateOrderStatus = (id: number, status: string) =>
   api.patch(`/orders/${id}/status`, { status });
-
-// ── Ticket ───────────────────────────────────────────────
-export const validateTicket = (ticket_code: string) =>
-  api.get(`/tickets/validate/${ticket_code}`);
 
 export default api;

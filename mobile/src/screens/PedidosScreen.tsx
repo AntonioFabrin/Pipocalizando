@@ -203,7 +203,7 @@ export default function PedidosScreen({ navigation }: any) {
                       <>
                         <Text style={styles.sessionPickerTitle} numberOfLines={1}>{selectedSession.movie_title || 'Filme'}</Text>
                         <Text style={styles.sessionPickerSub}>
-                          {selectedSession.session_date?.slice(0, 10)} • {selectedSession.session_time?.slice(0, 5)}{selectedSession.room ? ` • ${selectedSession.room}` : ''}
+                        {selectedSession.session_date?.slice(0, 10)} • {selectedSession.session_time?.slice(0, 5)}{(selectedSession.room || selectedSession.room_name) ? ` • ${selectedSession.room || selectedSession.room_name}` : ''}
                         </Text>
                       </>
                     ) : (
@@ -337,7 +337,7 @@ export default function PedidosScreen({ navigation }: any) {
                       {s.movie_title || s.title || 'Filme'}
                     </Text>
                     <Text style={styles.sessionOptionSub}>
-                      {s.session_date?.slice(0, 10)} • {s.session_time?.slice(0, 5)}{s.room ? ` • ${s.room}` : ''}
+                      {s.session_date?.slice(0, 10)} • {s.session_time?.slice(0, 5)}{(s.room || s.room_name) ? ` • ${s.room || s.room_name}` : ''}
                     </Text>
                   </View>
                   {selectedSession?.id === s.id && <Text style={{ color: COLORS.primary, fontSize: 18 }}>✓</Text>}

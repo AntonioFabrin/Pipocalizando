@@ -3,6 +3,7 @@ import * as auth       from '../controllers/authController';
 import * as products   from '../controllers/productController';
 import * as categories from '../controllers/categoryController';
 import * as orders     from '../controllers/orderController';
+import * as tickets    from '../controllers/ticketController';
 import * as payments   from '../controllers/paymentController';
 import * as users      from '../controllers/userController';
 import * as movies     from '../controllers/movieController';
@@ -77,12 +78,15 @@ router.get  ('/orders',            authMiddleware, orders.getOrders);
 router.patch('/orders/:id/status', authMiddleware, roleMiddleware(...STAFF), orders.updateOrderStatus);
 
 // ── TICKETS ──────────────────────────────────────────────
-router.get('/tickets/validate/:ticket_code', authMiddleware, roleMiddleware(...STAFF), orders.validateTicket);
+// ATENÇÃO: rota estática /purchase e /occupied/:id devem vir ANTES de /:ticket_code
+router.post('/tickets/purchase',              authMiddleware, tickets.purchaseTickets);
+router.get ('/tickets/occupied/:session_id',  tickets.getOccupiedSeats);
+router.get ('/tickets/validate/:ticket_code', authMiddleware, roleMiddleware(...STAFF), orders.validateTicket);
 
 // ── PAGAMENTOS ───────────────────────────────────────────
-router.get  ('/payments',            authMiddleware, roleMiddleware(...ADMIN), payments.getAll);
-router.get  ('/payments/:id',        authMiddleware, roleMiddleware(...ADMIN), payments.getById);
-router.patch('/payments/:id/approve',authMiddleware, roleMiddleware(...ADMIN), payments.approve);
-router.patch('/payments/:id/reject', authMiddleware, roleMiddleware(...ADMIN), payments.reject);
+router.get  ('/payments',             authMiddleware, roleMiddleware(...ADMIN), payments.getAll);
+router.get  ('/payments/:id',         authMiddleware, roleMiddleware(...ADMIN), payments.getById);
+router.patch('/payments/:id/approve', authMiddleware, roleMiddleware(...ADMIN), payments.approve);
+router.patch('/payments/:id/reject',  authMiddleware, roleMiddleware(...ADMIN), payments.reject);
 
 export default router;

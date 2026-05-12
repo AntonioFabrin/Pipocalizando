@@ -39,8 +39,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       message: 'Usuário criado!',
       user: { id: result.insertId, name, email, role: 'customer', phone }
     });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno' });
+  } catch (error: any) {
+    console.error('❌ [register]', error?.message || error);
+    res.status(500).json({ message: 'Erro interno', detail: error?.message });
   }
 };
 
@@ -71,8 +72,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       token,
       user: { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone }
     });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno' });
+  } catch (error: any) {
+    console.error('❌ [login]', error?.message || error);
+    res.status(500).json({ message: 'Erro interno', detail: error?.message });
   }
 };
 
@@ -87,8 +89,9 @@ export const getProfile = async (req: Request, res: Response): Promise<void> => 
       return;
     }
     res.json(rows[0]);
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno' });
+  } catch (error: any) {
+    console.error('❌ [getProfile]', error?.message || error);
+    res.status(500).json({ message: 'Erro interno', detail: error?.message });
   }
 };
 
@@ -100,7 +103,6 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
       return;
     }
     const [rows]: any = await pool.query('SELECT id, name FROM users WHERE email = ?', [email]);
-    // Sempre retorna 200 para não vazar se o email existe
     if (rows.length === 0) {
       res.json({ message: 'Se o email estiver cadastrado, você receberá o código em breve.' });
       return;
@@ -113,11 +115,13 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
       'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)',
       [user.id, token, expiresAt]
     );
-    // TODO: integrar com serviço de email (Nodemailer/SendGrid)
-    console.info(`[RESET] Email: ${email} | Código: ${token}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.info(`[RESET] Email: ${email} | Codigo: ${token}`);
+    }
     res.json({ message: 'Se o email estiver cadastrado, você receberá o código em breve.' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno' });
+  } catch (error: any) {
+    console.error('❌ [forgotPassword]', error?.message || error);
+    res.status(500).json({ message: 'Erro interno', detail: error?.message });
   }
 };
 
@@ -139,8 +143,9 @@ export const verifyResetCode = async (req: Request, res: Response): Promise<void
       return;
     }
     res.json({ message: 'Código válido.' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno' });
+  } catch (error: any) {
+    console.error('❌ [verifyResetCode]', error?.message || error);
+    res.status(500).json({ message: 'Erro interno', detail: error?.message });
   }
 };
 
@@ -170,7 +175,8 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     await pool.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, user_id]);
     await pool.query('UPDATE password_reset_tokens SET used = 1 WHERE id = ?', [tokenId]);
     res.json({ message: 'Senha redefinida com sucesso!' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno' });
+  } catch (error: any) {
+    console.error('❌ [resetPassword]', error?.message || error);
+    res.status(500).json({ message: 'Erro interno', detail: error?.message });
   }
 };

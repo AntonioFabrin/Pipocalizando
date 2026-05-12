@@ -5,7 +5,13 @@ import {
 import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
 
 export default function OrderSuccessScreen({ route, navigation }: any) {
-  const { order } = route.params;
+  const order = route.params?.order ?? route.params ?? {};
+  const tickets = Array.isArray(order.tickets) ? order.tickets : [];
+  const ticketCodes = tickets.length > 0
+    ? tickets.map((ticket: any) => ticket.ticket_code).filter(Boolean)
+    : [order.ticket_code].filter(Boolean);
+  const orderId = order.order_id ?? order.orderId ?? order.id;
+  const total = Number(order.total ?? 0);
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -45,7 +51,13 @@ export default function OrderSuccessScreen({ route, navigation }: any) {
         <View style={styles.ticketCard}>
           <View style={styles.ticketTop}>
             <Text style={styles.ticketLabel}>🎫 Código do Ticket</Text>
-            <Text style={styles.ticketCode}>{order.ticket_code}</Text>
+            {ticketCodes.length > 0 ? (
+              ticketCodes.map((code: string) => (
+                <Text key={code} style={styles.ticketCode}>{code}</Text>
+              ))
+            ) : (
+              <Text style={styles.ticketCode}>-</Text>
+            )}
           </View>
           <View style={styles.ticketDivider}>
             <View style={styles.ticketCircleLeft} />
@@ -60,9 +72,9 @@ export default function OrderSuccessScreen({ route, navigation }: any) {
         {/* Info do pedido */}
         <View style={styles.infoCard}>
           {[
-            { label: 'Número do pedido', value: `#${order.order_id}` },
-            { label: 'Total pago', value: `R$ ${Number(order.total).toFixed(2)}`, valueStyle: { color: COLORS.gold, fontWeight: 'bold' as const } },
-            { label: 'Forma de pagamento', value: PAYMENT_LABEL[order.payment_method] || order.payment_method },
+            { label: 'Número do pedido', value: orderId ? `#${orderId}` : '-' },
+            { label: 'Total pago', value: `R$ ${total.toFixed(2)}`, valueStyle: { color: COLORS.gold, fontWeight: 'bold' as const } },
+            { label: 'Forma de pagamento', value: PAYMENT_LABEL[order.payment_method] || order.payment_method || '-' },
             { label: 'Status', value: '⏳ Aguardando pagamento', valueStyle: { color: COLORS.warning } },
           ].map((row, i, arr) => (
             <View key={i} style={[styles.infoRow, i === arr.length - 1 && { borderBottomWidth: 0 }]}>

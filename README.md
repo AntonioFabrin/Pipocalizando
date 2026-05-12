@@ -37,6 +37,11 @@ npx expo start
 mysql -u root -p < database/schema.sql
 ```
 
+Se o banco ja existir e voce estiver apenas atualizando os ingressos com assentos:
+```bash
+mysql -u root -p < database/migration_tickets_seats.sql
+```
+
 ## Roles
 | Role | Descrição |
 |------|-----------|

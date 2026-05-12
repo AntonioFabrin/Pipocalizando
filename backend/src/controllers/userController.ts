@@ -15,6 +15,13 @@ export const getAll = async (req: Request, res: Response): Promise<void> => {
 
 export const getById = async (req: Request, res: Response): Promise<void> => {
   try {
+    const requestingUser = (req as any).user;
+    const isAdmin = ['super_admin', 'manager'].includes(requestingUser.role);
+    if (!isAdmin && String(requestingUser.id) !== String(req.params.id)) {
+      res.status(403).json({ message: 'Voce nao tem permissao para consultar este usuario.' });
+      return;
+    }
+
     const [rows]: any = await pool.query(
       'SELECT id, name, email, role, phone, created_at FROM users WHERE id = ?',
       [req.params.id]

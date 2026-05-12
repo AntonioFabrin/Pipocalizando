@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl, Alert
+  ActivityIndicator, RefreshControl, Alert, Platform, Modal
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { getOrders, getMovies } from '../services/api';
@@ -53,17 +53,26 @@ export default function ContaScreen({ navigation }: any) {
 
   useEffect(() => { fetchData(); }, []);
 
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
   const handleLogout = () => {
-    Alert.alert('Sair', 'Deseja sair da sua conta?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Sair',
-        style: 'destructive',
-        onPress: () => {
-          logout().catch(e => console.error('Erro ao fazer logout:', e));
+    if (Platform.OS === 'web') {
+      setShowLogoutModal(true);
+    } else {
+      Alert.alert('Sair', 'Deseja sair da sua conta?', [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sair',
+          style: 'destructive',
+          onPress: () => logout().catch(e => console.error('Erro logout:', e)),
         },
-      },
-    ]);
+      ]);
+    }
+  };
+
+  const confirmLogout = () => {
+    setShowLogoutModal(false);
+    logout().catch(e => console.error('Erro logout:', e));
   };
 
   const formatDate = (d: string) =>
@@ -87,6 +96,25 @@ export default function ContaScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
+
+      {/* Modal de confirmação web */}
+      <Modal transparent visible={showLogoutModal} animationType="fade" onRequestClose={() => setShowLogoutModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>🚪 Sair da conta</Text>
+            <Text style={styles.modalMsg}>Deseja realmente sair da sua conta?</Text>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalBtnCancel} onPress={() => setShowLogoutModal(false)}>
+                <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalBtnConfirm} onPress={confirmLogout}>
+                <Text style={styles.modalBtnConfirmText}>Sair</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.avatarRow}>
@@ -403,4 +431,14 @@ const styles = StyleSheet.create({
   emptyText: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginTop: SPACING.sm },
   ctaBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 12, paddingHorizontal: SPACING.xl, marginTop: SPACING.lg },
   ctaBtnText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+  // Modal logout (web)
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
+  modalBox: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.xl, width: 300, borderWidth: 1, borderColor: '#333' },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.text, marginBottom: SPACING.sm },
+  modalMsg: { fontSize: 14, color: COLORS.textSecondary, marginBottom: SPACING.xl },
+  modalBtns: { flexDirection: 'row', gap: SPACING.sm },
+  modalBtnCancel: { flex: 1, paddingVertical: 12, borderRadius: RADIUS.md, backgroundColor: COLORS.surfaceLight, alignItems: 'center' },
+  modalBtnCancelText: { color: COLORS.text, fontWeight: '600', fontSize: 14 },
+  modalBtnConfirm: { flex: 1, paddingVertical: 12, borderRadius: RADIUS.md, backgroundColor: COLORS.error, alignItems: 'center' },
+  modalBtnConfirmText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
 });
