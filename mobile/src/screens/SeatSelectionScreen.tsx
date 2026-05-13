@@ -4,7 +4,12 @@ import {
   ActivityIndicator, Dimensions, Modal, SafeAreaView,
   StatusBar, Platform,
 } from 'react-native';
-import { getOccupiedSeats, purchaseTickets } from '../services/api';
+import {
+  getOccupiedSeats,
+  purchaseTickets,
+  releaseSeatReservations,
+  reserveSeats,
+} from '../services/api';
 import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
 
 // ─── Medidas responsivas ──────────────────────────────────────────────────────
@@ -84,7 +89,10 @@ export default function SeatSelectionScreen({ route, navigation }: any) {
   const [selected,     setSelected]     = useState<string[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [buying,       setBuying]       = useState(false);
+  const [reserving,    setReserving]    = useState(false);
   const [showConfirm,  setShowConfirm]  = useState(false);
+  const [reserveUntil, setReserveUntil] = useState<Date | null>(null);
+  const [secondsLeft,  setSecondsLeft]  = useState(0);
 
   const loadOccupied = useCallback(async () => {
     try {
@@ -101,20 +109,77 @@ export default function SeatSelectionScreen({ route, navigation }: any) {
 
   useEffect(() => { loadOccupied(); }, [loadOccupied]);
 
-  const toggleSeat = useCallback((label: string) => {
-    setSelected(prev =>
-      prev.includes(label) ? prev.filter(s => s !== label) : [...prev, label]
-    );
-  }, []);
+  useEffect(() => {
+    return () => {
+      releaseSeatReservations({ session_id: sessionId }).catch(() => undefined);
+    };
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!reserveUntil) {
+      setSecondsLeft(0);
+      return;
+    }
+
+    const tick = () => {
+      const next = Math.max(0, Math.ceil((reserveUntil.getTime() - Date.now()) / 1000));
+      setSecondsLeft(next);
+      if (next === 0) {
+        setSelected([]);
+        setReserveUntil(null);
+        loadOccupied();
+      }
+    };
+
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [reserveUntil, loadOccupied]);
+
+  const syncReservation = async (nextSeats: string[]) => {
+    setReserving(true);
+    try {
+      if (nextSeats.length === 0) {
+        await releaseSeatReservations({ session_id: sessionId });
+        setReserveUntil(null);
+      } else {
+        const { data } = await reserveSeats({
+          movie_id: movieId,
+          session_id: sessionId,
+          seats: nextSeats,
+        });
+        setReserveUntil(data.expires_at ? new Date(data.expires_at) : new Date(Date.now() + 20 * 60 * 1000));
+      }
+      setSelected(nextSeats);
+      await loadOccupied();
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || 'Nao foi possivel reservar este assento.';
+      alert(msg);
+      await loadOccupied();
+    } finally {
+      setReserving(false);
+    }
+  };
+
+  const toggleSeat = (label: string) => {
+    if (reserving || buying) return;
+    const nextSeats = selected.includes(label)
+      ? selected.filter(s => s !== label)
+      : [...selected, label];
+    syncReservation(nextSeats);
+  };
 
   const statusOf = (label: string): SeatStatus => {
-    if (occupied.includes(label)) return 'occupied';
     if (selected.includes(label)) return 'selected';
+    if (occupied.includes(label)) return 'occupied';
     return 'free';
   };
 
   const total    = selected.length * pricePerSeat;
   const totalFmt = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const reserveTimer = secondsLeft > 0
+    ? `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`
+    : null;
 
   const handleBuy = async () => {
     setShowConfirm(false);
@@ -124,6 +189,8 @@ export default function SeatSelectionScreen({ route, navigation }: any) {
         movie_id: movieId, session_id: sessionId,
         seats: selected,
       });
+      setSelected([]);
+      setReserveUntil(null);
       navigation.replace('OrderSuccess', {
         order: {
           order_id: data.order_id,
@@ -258,15 +325,16 @@ export default function SeatSelectionScreen({ route, navigation }: any) {
           <Text style={styles.footerLabel}>
             {selected.length === 0 ? 'Selecione os assentos' : `${selected.length} ingresso${selected.length > 1 ? 's' : ''}`}
           </Text>
+          {reserveTimer ? <Text style={styles.reserveTimer}>Reserva expira em {reserveTimer}</Text> : null}
           {selected.length > 0 && <Text style={styles.footerTotal}>{totalFmt}</Text>}
         </View>
         <TouchableOpacity
-          style={[styles.buyBtn, (selected.length === 0 || buying) && styles.buyBtnOff]}
+          style={[styles.buyBtn, (selected.length === 0 || buying || reserving) && styles.buyBtnOff]}
           onPress={() => selected.length > 0 && setShowConfirm(true)}
-          disabled={selected.length === 0 || buying}
+          disabled={selected.length === 0 || buying || reserving}
           activeOpacity={0.8}
         >
-          {buying
+          {buying || reserving
             ? <ActivityIndicator color="#fff" size="small" />
             : <Text style={styles.buyBtnText}>Continuar  →</Text>
           }
@@ -396,6 +464,7 @@ const styles = StyleSheet.create({
   },
   footerLeft:   { flex: 1 },
   footerLabel:  { color: COLORS.textSecondary, fontSize: 12 },
+  reserveTimer: { color: COLORS.warning, fontSize: 11, marginTop: 2, fontWeight: '600' },
   footerTotal:  { color: COLORS.gold, fontSize: 20, fontWeight: 'bold', marginTop: 1 },
   buyBtn:       { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 13, paddingHorizontal: SPACING.lg },
   buyBtnOff:    { opacity: 0.35 },

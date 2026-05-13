@@ -61,6 +61,14 @@ export interface Payment {
   order_id: number;
   method: 'cash' | 'credit_card' | 'debit_card' | 'pix';
   status: 'pending' | 'approved' | 'rejected' | 'refunded';
+  status_detail?: string | null;
+  provider?: string | null;
+  provider_payment_id?: string | null;
+  external_reference?: string | null;
+  checkout_url?: string | null;
+  qr_code?: string | null;
+  qr_code_base64?: string | null;
+  expires_at?: Date | null;
   amount: number;
   paid_at?: Date | null;
   created_at?: Date;

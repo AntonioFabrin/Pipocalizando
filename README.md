@@ -42,6 +42,11 @@ Se o banco ja existir e voce estiver apenas atualizando os ingressos com assento
 mysql -u root -p < database/migration_tickets_seats.sql
 ```
 
+Para ativar reservas temporarias de assentos por 20 minutos em bancos existentes:
+```bash
+mysql -u root -p < database/migration_seat_reservations.sql
+```
+
 ## Roles
 | Role | Descrição |
 |------|-----------|

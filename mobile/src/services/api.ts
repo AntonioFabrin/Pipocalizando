@@ -132,6 +132,17 @@ export const purchaseTickets = (data: {
   seats:           string[];
 }) => api.post('/tickets/purchase', data);
 
+export const reserveSeats = (data: {
+  movie_id:        number;
+  session_id:      number;
+  seats:           string[];
+}) => api.post('/tickets/reserve', data);
+
+export const releaseSeatReservations = (data: {
+  session_id: number;
+  seats?: string[];
+}) => api.post('/tickets/reservations/release', data);
+
 /**
  * Retorna os assentos já ocupados em uma sessão.
  * Resposta: { occupied: ['A3', 'B7', ...] }
@@ -162,5 +173,7 @@ export const getOrders = () =>
   api.get('/orders');
 export const updateOrderStatus = (id: number, status: string) =>
   api.patch(`/orders/${id}/status`, { status });
+export const getOrderPaymentStatus = (order_id: number) =>
+  api.get(`/payments/order/${order_id}/status`);
 
 export default api;

@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Animated, ScrollView
+  View, Text, TouchableOpacity, StyleSheet, Animated, ScrollView, Image
 } from 'react-native';
 import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
+import { getOrderPaymentStatus } from '../services/api';
 
 export default function OrderSuccessScreen({ route, navigation }: any) {
   const order = route.params?.order ?? route.params ?? {};
@@ -12,6 +13,9 @@ export default function OrderSuccessScreen({ route, navigation }: any) {
     : [order.ticket_code].filter(Boolean);
   const orderId = order.order_id ?? order.orderId ?? order.id;
   const total = Number(order.total ?? 0);
+  const pix = order.pix || {};
+  const [paymentStatus, setPaymentStatus] = useState(order.payment_status || 'pending');
+  const [orderStatus, setOrderStatus] = useState(order.order_status || 'pending');
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -21,6 +25,24 @@ export default function OrderSuccessScreen({ route, navigation }: any) {
       Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
     ]).start();
   }, []);
+
+  useEffect(() => {
+    if (!orderId || paymentStatus === 'approved') return;
+
+    const loadStatus = async () => {
+      try {
+        const { data } = await getOrderPaymentStatus(Number(orderId));
+        setPaymentStatus(data.status);
+        setOrderStatus(data.order_status);
+      } catch {
+        // O historico tambem atualiza o status quando o usuario abre os pedidos.
+      }
+    };
+
+    loadStatus();
+    const timer = setInterval(loadStatus, 5000);
+    return () => clearInterval(timer);
+  }, [orderId, paymentStatus]);
 
   const PAYMENT_LABEL: Record<string, string> = {
     pix: 'PIX 💠', credit_card: 'Crédito 💳',
@@ -75,7 +97,11 @@ export default function OrderSuccessScreen({ route, navigation }: any) {
             { label: 'Número do pedido', value: orderId ? `#${orderId}` : '-' },
             { label: 'Total pago', value: `R$ ${total.toFixed(2)}`, valueStyle: { color: COLORS.gold, fontWeight: 'bold' as const } },
             { label: 'Forma de pagamento', value: PAYMENT_LABEL[order.payment_method] || order.payment_method || '-' },
-            { label: 'Status', value: '⏳ Aguardando pagamento', valueStyle: { color: COLORS.warning } },
+            {
+              label: 'Status',
+              value: paymentStatus === 'approved' ? 'Aprovado' : orderStatus === 'cancelled' ? 'Cancelado' : 'Aguardando pagamento',
+              valueStyle: { color: paymentStatus === 'approved' ? COLORS.success : orderStatus === 'cancelled' ? COLORS.error : COLORS.warning },
+            },
           ].map((row, i, arr) => (
             <View key={i} style={[styles.infoRow, i === arr.length - 1 && { borderBottomWidth: 0 }]}>
               <Text style={styles.infoLabel}>{row.label}</Text>
@@ -83,6 +109,26 @@ export default function OrderSuccessScreen({ route, navigation }: any) {
             </View>
           ))}
         </View>
+
+        {pix.qr_code_base64 || pix.qr_code || pix.ticket_url ? (
+          <View style={styles.pixCard}>
+            <Text style={styles.pixTitle}>Pagamento PIX</Text>
+            {pix.qr_code_base64 ? (
+              <Image
+                source={{ uri: `data:image/png;base64,${pix.qr_code_base64}` }}
+                style={styles.pixQr}
+                resizeMode="contain"
+              />
+            ) : null}
+            {pix.qr_code ? (
+              <>
+                <Text style={styles.pixLabel}>Pix copia e cola</Text>
+                <Text selectable style={styles.pixCode}>{pix.qr_code}</Text>
+              </>
+            ) : null}
+            {pix.ticket_url ? <Text selectable style={styles.pixLink}>{pix.ticket_url}</Text> : null}
+          </View>
+        ) : null}
 
         {/* Passos */}
         <View style={styles.stepsCard}>
@@ -145,6 +191,13 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.md, borderBottomWidth: 1, borderBottomColor: '#2a2a2a' },
   infoLabel: { color: COLORS.textSecondary, fontSize: 14 },
   infoValue: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  // PIX
+  pixCard: { width: '100%', backgroundColor: COLORS.card, borderRadius: RADIUS.md, marginTop: SPACING.md, padding: SPACING.md, borderWidth: 1, borderColor: '#2a2a2a', alignItems: 'center' },
+  pixTitle: { color: COLORS.text, fontSize: 16, fontWeight: 'bold', marginBottom: SPACING.sm },
+  pixQr: { width: 220, height: 220, backgroundColor: '#fff', borderRadius: RADIUS.sm, marginBottom: SPACING.md },
+  pixLabel: { color: COLORS.textSecondary, fontSize: 13, alignSelf: 'flex-start', marginBottom: 6 },
+  pixCode: { width: '100%', color: COLORS.text, backgroundColor: '#111', borderRadius: RADIUS.sm, padding: SPACING.sm, fontSize: 12 },
+  pixLink: { width: '100%', color: COLORS.primary, fontSize: 12, marginTop: SPACING.sm },
   // Passos
   stepsCard: { width: '100%', backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.md, borderWidth: 1, borderColor: '#2a2a2a' },
   stepsTitle: { fontSize: 14, fontWeight: 'bold', color: COLORS.textSecondary, marginBottom: SPACING.md, textTransform: 'uppercase', letterSpacing: 1 },

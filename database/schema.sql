@@ -142,15 +142,44 @@ CREATE TABLE IF NOT EXISTS tickets (
   INDEX idx_tickets_session (session_id)
 );
 
+CREATE TABLE IF NOT EXISTS seat_reservations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  session_id INT NOT NULL,
+  movie_id INT NOT NULL,
+  user_id INT NOT NULL,
+  seat_label VARCHAR(10) NOT NULL,
+  reservation_token VARCHAR(64) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (session_id) REFERENCES movie_sessions(id) ON DELETE CASCADE,
+  FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_seat_reservation (session_id, seat_label),
+  INDEX idx_seat_reservations_expiry (expires_at),
+  INDEX idx_seat_reservations_user_session (user_id, session_id)
+);
+
 CREATE TABLE IF NOT EXISTS payments (
   id INT AUTO_INCREMENT PRIMARY KEY,
   order_id INT NOT NULL,
   method ENUM('cash', 'credit_card', 'debit_card', 'pix') NOT NULL,
   status ENUM('pending', 'approved', 'rejected', 'refunded') DEFAULT 'pending',
+  status_detail VARCHAR(100),
+  provider VARCHAR(50),
+  provider_payment_id VARCHAR(100),
+  external_reference VARCHAR(100),
+  checkout_url VARCHAR(500),
+  qr_code TEXT,
+  qr_code_base64 MEDIUMTEXT,
+  expires_at DATETIME NULL,
+  raw_response JSON,
   amount DECIMAL(10, 2) NOT NULL,
   paid_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  INDEX idx_payments_provider_payment_id (provider_payment_id),
+  INDEX idx_payments_external_reference (external_reference),
+  INDEX idx_payments_status_expires_at (status, expires_at)
 );
 
 CREATE TABLE IF NOT EXISTS password_reset_tokens (

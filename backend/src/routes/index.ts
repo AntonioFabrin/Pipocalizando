@@ -79,11 +79,15 @@ router.patch('/orders/:id/status', authMiddleware, roleMiddleware(...STAFF), ord
 
 // ── TICKETS ──────────────────────────────────────────────
 // ATENÇÃO: rota estática /purchase e /occupied/:id devem vir ANTES de /:ticket_code
+router.post('/tickets/reserve',               authMiddleware, tickets.reserveSeats);
+router.post('/tickets/reservations/release',  authMiddleware, tickets.releaseSeatReservations);
 router.post('/tickets/purchase',              authMiddleware, tickets.purchaseTickets);
 router.get ('/tickets/occupied/:session_id',  tickets.getOccupiedSeats);
 router.get ('/tickets/validate/:ticket_code', authMiddleware, roleMiddleware(...STAFF), orders.validateTicket);
 
 // ── PAGAMENTOS ───────────────────────────────────────────
+router.post ('/payments/mercadopago/webhook', payments.mercadoPagoWebhook);
+router.get  ('/payments/order/:order_id/status', authMiddleware, payments.getOrderPaymentStatus);
 router.get  ('/payments',             authMiddleware, roleMiddleware(...ADMIN), payments.getAll);
 router.get  ('/payments/:id',         authMiddleware, roleMiddleware(...ADMIN), payments.getById);
 router.patch('/payments/:id/approve', authMiddleware, roleMiddleware(...ADMIN), payments.approve);
