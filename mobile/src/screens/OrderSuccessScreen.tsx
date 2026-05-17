@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Animated, ScrollView, Image
+  View, Text, TouchableOpacity, StyleSheet, Animated, ScrollView, Image, Linking, Alert
 } from 'react-native';
 import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
 import { getOrderPaymentStatus } from '../services/api';
@@ -18,6 +18,7 @@ export default function OrderSuccessScreen({ route, navigation }: any) {
   const [orderStatus, setOrderStatus] = useState(order.order_status || 'pending');
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const openedPaymentRef = useRef(false);
 
   useEffect(() => {
     Animated.sequence([
@@ -43,6 +44,24 @@ export default function OrderSuccessScreen({ route, navigation }: any) {
     const timer = setInterval(loadStatus, 5000);
     return () => clearInterval(timer);
   }, [orderId, paymentStatus]);
+
+  const openPayment = async () => {
+    if (!pix.ticket_url) return;
+
+    const canOpen = await Linking.canOpenURL(pix.ticket_url);
+    if (!canOpen) {
+      Alert.alert('Pagamento', 'Nao foi possivel abrir o link do Mercado Pago neste dispositivo.');
+      return;
+    }
+
+    await Linking.openURL(pix.ticket_url);
+  };
+
+  useEffect(() => {
+    if (!pix.ticket_url || openedPaymentRef.current || paymentStatus === 'approved') return;
+    openedPaymentRef.current = true;
+    openPayment().catch(() => undefined);
+  }, [pix.ticket_url, paymentStatus]);
 
   const PAYMENT_LABEL: Record<string, string> = {
     pix: 'PIX 💠', credit_card: 'Crédito 💳',
@@ -127,6 +146,11 @@ export default function OrderSuccessScreen({ route, navigation }: any) {
               </>
             ) : null}
             {pix.ticket_url ? <Text selectable style={styles.pixLink}>{pix.ticket_url}</Text> : null}
+            {pix.ticket_url ? (
+              <TouchableOpacity style={styles.openPaymentButton} onPress={openPayment}>
+                <Text style={styles.openPaymentText}>Abrir pagamento no Mercado Pago</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 
@@ -198,6 +222,8 @@ const styles = StyleSheet.create({
   pixLabel: { color: COLORS.textSecondary, fontSize: 13, alignSelf: 'flex-start', marginBottom: 6 },
   pixCode: { width: '100%', color: COLORS.text, backgroundColor: '#111', borderRadius: RADIUS.sm, padding: SPACING.sm, fontSize: 12 },
   pixLink: { width: '100%', color: COLORS.primary, fontSize: 12, marginTop: SPACING.sm },
+  openPaymentButton: { width: '100%', backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 13, alignItems: 'center', marginTop: SPACING.md },
+  openPaymentText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
   // Passos
   stepsCard: { width: '100%', backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.md, borderWidth: 1, borderColor: '#2a2a2a' },
   stepsTitle: { fontSize: 14, fontWeight: 'bold', color: COLORS.textSecondary, marginBottom: SPACING.md, textTransform: 'uppercase', letterSpacing: 1 },

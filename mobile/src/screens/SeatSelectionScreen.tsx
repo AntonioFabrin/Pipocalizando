@@ -196,13 +196,24 @@ export default function SeatSelectionScreen({ route, navigation }: any) {
           order_id: data.order_id,
           ticket_code: data.tickets?.[0]?.ticket_code,
           tickets: data.tickets,
+          payment_id: data.payment_id,
+          provider_payment_id: data.provider_payment_id,
+          payment_status: data.payment_status,
+          payment_status_detail: data.payment_status_detail,
+          expires_at: data.expires_at,
           total: data.total,
           payment_method: 'pix',
+          pix: data.pix,
           movieTitle,
         },
       });
     } catch (e: any) {
-      const msg = e?.response?.data?.message || 'Não foi possível finalizar a compra.';
+      const apiError = e?.response?.data;
+      const msg = [
+        apiError?.message || 'Nao foi possivel finalizar a compra.',
+        apiError?.detail,
+        apiError?.provider_status ? `Status Mercado Pago: ${apiError.provider_status}` : null,
+      ].filter(Boolean).join('\n');
       alert(msg);
       loadOccupied();
     } finally {

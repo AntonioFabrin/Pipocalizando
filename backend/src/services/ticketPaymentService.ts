@@ -1,17 +1,29 @@
 import pool from '../config/db';
 
+const isMissingMercadoPagoColumns = (err: any): boolean =>
+  err?.code === 'ER_BAD_FIELD_ERROR' ||
+  (typeof err?.message === 'string' && (
+    err.message.includes('expires_at') ||
+    err.message.includes('status_detail')
+  ));
+
 export const cleanupExpiredTicketPayments = async (conn: any = pool): Promise<void> => {
-  await conn.query(
-    `UPDATE orders o
-     JOIN payments p ON p.order_id = o.id
-     SET o.status = 'cancelled',
-         p.status = 'rejected',
-         p.status_detail = COALESCE(p.status_detail, 'expired')
-     WHERE p.method = 'pix'
-       AND p.status = 'pending'
-       AND p.expires_at IS NOT NULL
-       AND p.expires_at <= NOW()`
-  );
+  try {
+    await conn.query(
+      `UPDATE orders o
+       JOIN payments p ON p.order_id = o.id
+       SET o.status = 'cancelled',
+           p.status = 'rejected',
+           p.status_detail = COALESCE(p.status_detail, 'expired')
+       WHERE p.method = 'pix'
+         AND p.status = 'pending'
+         AND p.expires_at IS NOT NULL
+         AND p.expires_at <= NOW()`
+    );
+  } catch (err: any) {
+    if (isMissingMercadoPagoColumns(err)) return;
+    throw err;
+  }
 
   await conn.query(
     `DELETE t
@@ -62,13 +74,23 @@ export const finalizeTicketOrder = async (conn: any, orderId: number): Promise<v
 };
 
 export const cancelTicketOrder = async (conn: any, orderId: number, detail = 'cancelled'): Promise<void> => {
-  await conn.query(
-    `UPDATE payments
-     SET status = 'rejected',
-         status_detail = ?
-     WHERE order_id = ? AND status = 'pending'`,
-    [detail, orderId]
-  );
+  try {
+    await conn.query(
+      `UPDATE payments
+       SET status = 'rejected',
+           status_detail = ?
+       WHERE order_id = ? AND status = 'pending'`,
+      [detail, orderId]
+    );
+  } catch (err: any) {
+    if (!isMissingMercadoPagoColumns(err)) throw err;
+    await conn.query(
+      `UPDATE payments
+       SET status = 'rejected'
+       WHERE order_id = ? AND status = 'pending'`,
+      [orderId]
+    );
+  }
   await conn.query('UPDATE orders SET status = "cancelled" WHERE id = ?', [orderId]);
   await conn.query(
     `DELETE FROM tickets

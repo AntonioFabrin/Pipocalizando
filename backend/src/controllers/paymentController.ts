@@ -33,9 +33,9 @@ const syncMercadoPagoPayment = async (providerPaymentId: string) => {
       `SELECT p.*, o.status AS order_status
        FROM payments p
        JOIN orders o ON o.id = p.order_id
-       WHERE p.provider_payment_id = ? OR p.external_reference = ?
+       WHERE p.external_reference = ?
        FOR UPDATE`,
-      [String(providerPayment.id), providerPayment.external_reference || null]
+      [providerPayment.external_reference || null]
     );
 
     if (rows.length === 0) {

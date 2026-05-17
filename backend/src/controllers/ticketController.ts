@@ -1,11 +1,12 @@
 import { Request, Response } from 'express';
 import pool from '../config/db';
 import { v4 as uuidv4 } from 'uuid';
-import { createPixPayment, getPixData } from '../services/mercadoPagoService';
+import { MercadoPagoApiError, createCheckoutPreference } from '../services/mercadoPagoService';
 import { cancelTicketOrder, cleanupExpiredTicketPayments } from '../services/ticketPaymentService';
 
 const SEAT_LABEL_RE = /^[A-H](10|[1-9])$/;
 const RESERVATION_MINUTES = 20;
+const PIX_EXPIRATION_MINUTES = 30;
 
 const normalizeSeatList = (seats: unknown): string[] | null => {
   if (!Array.isArray(seats) || seats.length === 0) return null;
@@ -21,6 +22,54 @@ const normalizeSeatList = (seats: unknown): string[] | null => {
 
 const deleteExpiredReservations = async (conn: any): Promise<void> => {
   await conn.query('DELETE FROM seat_reservations WHERE expires_at <= NOW()');
+};
+
+const ensureSeatReservationsTable = async (conn: any): Promise<void> => {
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS seat_reservations (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      session_id INT NOT NULL,
+      movie_id INT NOT NULL,
+      user_id INT NOT NULL,
+      seat_label VARCHAR(10) NOT NULL,
+      reservation_token VARCHAR(64) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES movie_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE KEY uq_seat_reservation (session_id, seat_label),
+      INDEX idx_seat_reservations_expiry (expires_at),
+      INDEX idx_seat_reservations_user_session (user_id, session_id)
+    )
+  `);
+};
+
+const ensureMercadoPagoPaymentColumns = async (conn: any): Promise<void> => {
+  const [columns]: any = await conn.query(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments'`
+  );
+  const existing = new Set(columns.map((column: any) => column.COLUMN_NAME));
+
+  const missingDefinitions: Array<[string, string]> = [
+    ['status_detail', 'ADD COLUMN status_detail VARCHAR(100) NULL AFTER status'],
+    ['provider', 'ADD COLUMN provider VARCHAR(50) NULL AFTER status_detail'],
+    ['provider_payment_id', 'ADD COLUMN provider_payment_id VARCHAR(100) NULL AFTER provider'],
+    ['external_reference', 'ADD COLUMN external_reference VARCHAR(100) NULL AFTER provider_payment_id'],
+    ['checkout_url', 'ADD COLUMN checkout_url VARCHAR(500) NULL AFTER external_reference'],
+    ['qr_code', 'ADD COLUMN qr_code TEXT NULL AFTER checkout_url'],
+    ['qr_code_base64', 'ADD COLUMN qr_code_base64 MEDIUMTEXT NULL AFTER qr_code'],
+    ['expires_at', 'ADD COLUMN expires_at DATETIME NULL AFTER qr_code_base64'],
+    ['raw_response', 'ADD COLUMN raw_response JSON NULL AFTER expires_at'],
+  ];
+
+  for (const [columnName, definition] of missingDefinitions) {
+    if (!existing.has(columnName)) {
+      await conn.query(`ALTER TABLE payments ${definition}`);
+    }
+  }
 };
 
 const findConflictingReservations = async (
@@ -58,6 +107,7 @@ export const reserveSeats = async (req: Request, res: Response): Promise<void> =
   try {
     await conn.beginTransaction();
     await cleanupExpiredTicketPayments(conn);
+    await ensureSeatReservationsTable(conn);
 
     const movieId = Number(req.body.movie_id);
     const sessionId = Number(req.body.session_id);
@@ -150,6 +200,8 @@ export const reserveSeats = async (req: Request, res: Response): Promise<void> =
 
 export const releaseSeatReservations = async (req: Request, res: Response): Promise<void> => {
   try {
+    await ensureSeatReservationsTable(pool);
+
     const sessionId = Number(req.body.session_id);
     const userId = (req as any).user.id;
     const seats = Array.isArray(req.body.seats)
@@ -187,6 +239,7 @@ export const purchaseTickets = async (req: Request, res: Response): Promise<void
   let createdOrderId: number | null = null;
   let createdPaymentId: number | null = null;
   try {
+    await ensureMercadoPagoPaymentColumns(conn);
     await conn.beginTransaction();
 
     const movieId = Number(req.body.movie_id);
@@ -201,6 +254,7 @@ export const purchaseTickets = async (req: Request, res: Response): Promise<void
     }
 
     await cleanupExpiredTicketPayments(conn);
+    await ensureSeatReservationsTable(conn);
     await deleteExpiredReservations(conn);
 
     const session = await assertActiveSession(conn, sessionId, movieId);
@@ -239,7 +293,13 @@ export const purchaseTickets = async (req: Request, res: Response): Promise<void
 
     const pricePerSeat = Number(session.price);
     const total = seats.length * pricePerSeat;
-    const expiresAt = new Date(Date.now() + RESERVATION_MINUTES * 60 * 1000);
+    if (!Number.isFinite(pricePerSeat) || pricePerSeat <= 0 || total <= 0) {
+      await conn.rollback();
+      res.status(400).json({ message: 'Preco do ingresso invalido. Configure um valor maior que zero para o filme.' });
+      return;
+    }
+
+    const expiresAt = new Date(Date.now() + PIX_EXPIRATION_MINUTES * 60 * 1000);
 
     const [customerRows]: any = await conn.query(
       'SELECT id, name, email FROM users WHERE id = ?',
@@ -280,11 +340,12 @@ export const purchaseTickets = async (req: Request, res: Response): Promise<void
 
     await conn.commit();
 
-    const payment = await createPixPayment({
+    const preference = await createCheckoutPreference({
       orderId,
       paymentId,
       amount: total,
       description: `Ingressos ${seats.join(', ')} - Pedido #${orderId}`,
+      seats,
       payer: {
         email: customerRows[0].email,
         name: customerRows[0].name,
@@ -292,7 +353,6 @@ export const purchaseTickets = async (req: Request, res: Response): Promise<void
       expiresAt,
     });
 
-    const pix = getPixData(payment);
     await pool.query(
       `UPDATE payments
        SET provider_payment_id = ?,
@@ -303,12 +363,12 @@ export const purchaseTickets = async (req: Request, res: Response): Promise<void
            raw_response = ?
        WHERE id = ?`,
       [
-        String(payment.id),
-        payment.status_detail || payment.status,
-        pix.ticket_url,
-        pix.qr_code,
-        pix.qr_code_base64,
-        JSON.stringify(payment),
+        String(preference.id),
+        'checkout_preference_created',
+        preference.init_point,
+        null,
+        null,
+        JSON.stringify(preference),
         paymentId,
       ]
     );
@@ -317,13 +377,17 @@ export const purchaseTickets = async (req: Request, res: Response): Promise<void
       message: 'Pagamento PIX criado. Os ingressos serao confirmados apos aprovacao.',
       order_id: orderId,
       payment_id: paymentId,
-      provider_payment_id: String(payment.id),
-      payment_status: payment.status,
-      payment_status_detail: payment.status_detail,
+      provider_payment_id: String(preference.id),
+      payment_status: 'pending',
+      payment_status_detail: 'checkout_preference_created',
       expires_at: expiresAt,
       total,
       tickets: createdTickets,
-      pix,
+      pix: {
+        ticket_url: preference.init_point,
+        qr_code: null,
+        qr_code_base64: null,
+      },
     });
   } catch (err: any) {
     try {
@@ -341,11 +405,15 @@ export const purchaseTickets = async (req: Request, res: Response): Promise<void
         cleanupConn.release();
       }
     }
-    console.error('[purchaseTickets]', err?.message || err);
+    console.error('[purchaseTickets]', err?.message || err, err instanceof MercadoPagoApiError ? err.responseBody : '');
     const status = err?.code === 'ER_DUP_ENTRY' ? 409 : 500;
+    const isMercadoPagoError = err instanceof MercadoPagoApiError;
     res.status(status).json({
       message: status === 409 ? 'Um ou mais assentos acabaram de ser ocupados.' : 'Erro ao criar pagamento PIX.',
       detail: err?.message,
+      provider: isMercadoPagoError ? 'mercado_pago' : undefined,
+      provider_status: isMercadoPagoError ? err.status : undefined,
+      provider_response: isMercadoPagoError ? err.responseBody : undefined,
     });
   } finally {
     conn.release();
@@ -362,6 +430,7 @@ export const getOccupiedSeats = async (req: Request, res: Response): Promise<voi
     }
 
     await cleanupExpiredTicketPayments();
+    await ensureSeatReservationsTable(pool);
     await pool.query('DELETE FROM seat_reservations WHERE expires_at <= NOW()');
 
     const [rows]: any = await pool.query(
