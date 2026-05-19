@@ -11,6 +11,10 @@ import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
 
 const POSTER_PLACEHOLDER = require('../../assets/Image-not-found.png');
 
+const isValidPosterUrl = (url?: string): boolean => {
+  return !!(url && typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://')));
+};
+
 interface Movie {
   id: number;
   title: string;
@@ -162,9 +166,9 @@ function MovieCard({
         onPress={onPress}
         activeOpacity={0.9}
       >
-        <View style={styles.posterContainer}>
+<View style={styles.posterContainer}>
           <Image
-            source={item.poster_url ? { uri: item.poster_url } : POSTER_PLACEHOLDER}
+            source={isValidPosterUrl(item.poster_url) ? { uri: item.poster_url } : POSTER_PLACEHOLDER}
             style={styles.posterImage}
             resizeMode="cover"
           />
