@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   ActivityIndicator, RefreshControl, Modal, ScrollView,
-  TextInput, Alert, Image, Platform,
+  TextInput, Alert, Image, Animated, GestureResponderEvent, LayoutChangeEvent,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { getMovies, createMovie, updateMovie, deleteMovie, uploadImage } from '../services/api';
@@ -43,6 +43,209 @@ const emptyForm = {
   premiere_date: '', on_display_until: '', status: 'now_playing',
 };
 
+interface MovieCardProps {
+  item: Movie;
+  soon: boolean;
+  leftDays: number | null;
+  untilDays: number | null;
+  isUrgent: boolean;
+  isSeller: boolean;
+  formatDate: (dateStr: string) => string;
+  formatTime: (timeStr: string) => string;
+  onPress: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function MovieCard({
+  item,
+  soon,
+  leftDays,
+  untilDays,
+  isUrgent,
+  isSeller,
+  formatDate,
+  formatTime,
+  onPress,
+  onEdit,
+  onDelete,
+}: MovieCardProps) {
+  const tilt = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const cardSize = useRef({ width: 1, height: 1 });
+
+  const rotateX = tilt.y.interpolate({
+    inputRange: [-0.5, 0.5],
+    outputRange: ['8deg', '-8deg'],
+  });
+  const rotateY = tilt.x.interpolate({
+    inputRange: [-0.5, 0.5],
+    outputRange: ['-8deg', '8deg'],
+  });
+  const glowOpacity = scale.interpolate({
+    inputRange: [1, 1.02],
+    outputRange: [0, 1],
+  });
+
+  const handleLayout = (event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    cardSize.current = { width: Math.max(width, 1), height: Math.max(height, 1) };
+  };
+
+  const updateTilt = (event: GestureResponderEvent) => {
+    const { locationX, locationY } = event.nativeEvent;
+    const { width, height } = cardSize.current;
+
+    Animated.spring(tilt, {
+      toValue: {
+        x: locationX / width - 0.5,
+        y: locationY / height - 0.5,
+      },
+      stiffness: 150,
+      damping: 20,
+      mass: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const resetTilt = () => {
+    Animated.parallel([
+      Animated.spring(tilt, {
+        toValue: { x: 0, y: 0 },
+        stiffness: 150,
+        damping: 20,
+        mass: 1,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        stiffness: 150,
+        damping: 20,
+        mass: 1,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const pressIn = (event: GestureResponderEvent) => {
+    updateTilt(event);
+    Animated.spring(scale, {
+      toValue: 1.02,
+      stiffness: 150,
+      damping: 20,
+      mass: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <Animated.View
+      onLayout={handleLayout}
+      onTouchStart={pressIn}
+      onTouchMove={updateTilt}
+      onTouchEnd={resetTilt}
+      onTouchCancel={resetTilt}
+      style={[
+        styles.cardTilt,
+        {
+          transform: [
+            { perspective: 900 },
+            { rotateX },
+            { rotateY },
+            { scale },
+          ],
+        },
+      ]}
+    >
+      <TouchableOpacity
+        style={[styles.card, isUrgent && !soon && styles.cardUrgent]}
+        onPress={onPress}
+        activeOpacity={0.9}
+      >
+        <View style={styles.posterContainer}>
+          <Image
+            source={item.poster_url ? { uri: item.poster_url } : POSTER_PLACEHOLDER}
+            style={styles.posterImage}
+            resizeMode="cover"
+          />
+          {item.rating ? (
+            <View style={[styles.ratingBadge, { backgroundColor: RATING_COLOR[item.rating] || '#666' }]}>
+              <Text style={styles.ratingText}>{item.rating}</Text>
+            </View>
+          ) : null}
+          {soon && (
+            <View style={styles.comingSoonBadge}>
+              <Text style={styles.comingSoonText}>EM BREVE</Text>
+            </View>
+          )}
+          {!soon && isUrgent && (
+            <View style={styles.urgentBadge}>
+              <Text style={styles.urgentText}>
+                {leftDays === 0 ? 'ÚLTIMO DIA' : `${leftDays}d`}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+          {item.genre ? <Text style={styles.cardGenre}>{item.genre}</Text> : null}
+
+          {item.session_date ? (
+            <View style={styles.sessionRow}>
+              <Text style={styles.sessionDate}>📅 {formatDate(item.session_date)}</Text>
+              {item.session_time ? (
+                <View style={styles.sessionTimeBadge}>
+                  <Text style={styles.sessionTime}>{formatTime(item.session_time)}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          <View style={styles.infoTagsRow}>
+            {!soon && leftDays !== null && (
+              <View style={[styles.infoTag, isUrgent && { backgroundColor: COLORS.primary + '33' }]}>
+                <Text style={[styles.infoTagText, isUrgent && { color: COLORS.primary }]}>
+                  ⏳ {leftDays === 0 ? 'Último dia!' : `${leftDays}d restantes`}
+                </Text>
+              </View>
+            )}
+            {soon && untilDays !== null && (
+              <View style={[styles.infoTag, { backgroundColor: '#CE93D822' }]}>
+                <Text style={[styles.infoTagText, { color: '#CE93D8' }]}>🌟 Em {untilDays}d</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.cardFooter}>
+            {item.room ? <Text style={styles.roomText}>🏛 {item.room}</Text> : null}
+            {item.duration_minutes ? <Text style={styles.durationText}>⏱ {item.duration_minutes}min</Text> : null}
+          </View>
+
+          <TouchableOpacity style={styles.selectButton} onPress={onPress}>
+            <Text style={styles.selectButtonText}>
+              {soon ? '🌟 Ver detalhes' : '🎟 Ver sessões'}
+            </Text>
+          </TouchableOpacity>
+
+          {isSeller && (
+            <View style={styles.sellerQuickActions}>
+              <TouchableOpacity style={styles.quickEditBtn} onPress={onEdit}>
+                <Text style={styles.quickEditText}>✏️ Editar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickDeleteBtn} onPress={onDelete}>
+                <Text style={styles.quickDeleteText}>🗑</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+
+      <Animated.View style={[styles.cardGlow, { opacity: glowOpacity }]} />
+    </Animated.View>
+  );
+}
+
 export default function MoviesScreen({ navigation }: any) {
   const { isSeller } = useAuth();
   const [movies, setMovies] = useState<Movie[]>([]);
@@ -56,8 +259,8 @@ export default function MoviesScreen({ navigation }: any) {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [localPosterUri, setLocalPosterUri] = useState<string | null>(null);
 
-  const nowPlaying = (m: Movie) => m.status === 'now_playing' || (!m.status && m.session_date && new Date(m.session_date) <= new Date());
-  const comingSoon = (m: Movie) => m.status === 'coming_soon' || (!m.status && m.session_date && new Date(m.session_date) > new Date());
+  const nowPlaying = (m: Movie) => m.status === 'now_playing' || Boolean(!m.status && m.session_date && new Date(m.session_date) <= new Date());
+  const comingSoon = (m: Movie) => m.status === 'coming_soon' || Boolean(!m.status && m.session_date && new Date(m.session_date) > new Date());
 
   const daysLeft = (d: string) => d ? Math.max(0, Math.ceil((new Date(d).getTime() - Date.now()) / 86400000)) : null;
   const daysUntilPremiere = (d: string) => d ? Math.ceil((new Date(d).getTime() - Date.now()) / 86400000) : null;
@@ -321,102 +524,19 @@ export default function MoviesScreen({ navigation }: any) {
           const isUrgent = leftDays !== null && leftDays <= 7;
 
           return (
-            <TouchableOpacity
-              style={[styles.card, isUrgent && !soon && styles.cardUrgent]}
+            <MovieCard
+              item={item}
+              soon={soon}
+              leftDays={leftDays}
+              untilDays={untilDays}
+              isUrgent={isUrgent}
+              isSeller={isSeller}
+              formatDate={formatDate}
+              formatTime={formatTime}
               onPress={() => navigation.navigate('MovieDetail', { movieId: item.id })}
-              activeOpacity={0.85}
-            >
-              {/* Poster */}
-              <View style={styles.posterContainer}>
-                <Image
-                  source={item.poster_url ? { uri: item.poster_url } : POSTER_PLACEHOLDER}
-                  style={styles.posterImage}
-                  resizeMode="cover"
-                />
-                {item.rating ? (
-                  <View style={[styles.ratingBadge, { backgroundColor: RATING_COLOR[item.rating] || '#666' }]}>
-                    <Text style={styles.ratingText}>{item.rating}</Text>
-                  </View>
-                ) : null}
-                {soon && (
-                  <View style={styles.comingSoonBadge}>
-                    <Text style={styles.comingSoonText}>EM BREVE</Text>
-                  </View>
-                )}
-                {!soon && isUrgent && (
-                  <View style={styles.urgentBadge}>
-                    <Text style={styles.urgentText}>
-                      {leftDays === 0 ? 'ÚLTIMO DIA' : `${leftDays}d`}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Info */}
-              <View style={styles.cardInfo}>
-                <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
-                {item.genre ? <Text style={styles.cardGenre}>{item.genre}</Text> : null}
-
-                {item.session_date ? (
-                  <View style={styles.sessionRow}>
-                    <Text style={styles.sessionDate}>📅 {formatDate(item.session_date)}</Text>
-                    {item.session_time ? (
-                      <View style={styles.sessionTimeBadge}>
-                        <Text style={styles.sessionTime}>{formatTime(item.session_time)}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : null}
-
-                <View style={styles.infoTagsRow}>
-                  {!soon && leftDays !== null && (
-                    <View style={[styles.infoTag, isUrgent && { backgroundColor: COLORS.primary + '33' }]}>
-                      <Text style={[styles.infoTagText, isUrgent && { color: COLORS.primary }]}>
-                        ⏳ {leftDays === 0 ? 'Último dia!' : `${leftDays}d restantes`}
-                      </Text>
-                    </View>
-                  )}
-                  {soon && untilDays !== null && (
-                    <View style={[styles.infoTag, { backgroundColor: '#CE93D822' }]}>
-                      <Text style={[styles.infoTagText, { color: '#CE93D8' }]}>🌟 Em {untilDays}d</Text>
-                    </View>
-                  )}
-                </View>
-
-                <View style={styles.cardFooter}>
-                  {item.room ? <Text style={styles.roomText}>🏛 {item.room}</Text> : null}
-                  {item.duration_minutes ? <Text style={styles.durationText}>⏱ {item.duration_minutes}min</Text> : null}
-                </View>
-
-                {/* CTA - navega para página do filme */}
-                <TouchableOpacity
-                  style={styles.selectButton}
-                  onPress={() => navigation.navigate('MovieDetail', { movieId: item.id })}
-                >
-                  <Text style={styles.selectButtonText}>
-                    {soon ? '🌟 Ver detalhes' : '🎟 Ver sessões'}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Ações rápidas do vendedor na lista */}
-                {isSeller && (
-                  <View style={styles.sellerQuickActions}>
-                    <TouchableOpacity
-                      style={styles.quickEditBtn}
-                      onPress={() => openEdit(item)}
-                    >
-                      <Text style={styles.quickEditText}>✏️ Editar</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.quickDeleteBtn}
-                      onPress={() => handleDelete(item)}
-                    >
-                      <Text style={styles.quickDeleteText}>🗑</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            </TouchableOpacity>
+              onEdit={() => openEdit(item)}
+              onDelete={() => handleDelete(item)}
+            />
           );
         }}
       />
@@ -607,11 +727,27 @@ const styles = StyleSheet.create({
   list: { padding: SPACING.md, paddingTop: SPACING.sm },
 
   // Cards
+  cardTilt: {
+    marginBottom: SPACING.sm,
+  },
   card: {
     backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
     flexDirection: 'row', overflow: 'hidden',
     borderWidth: 1, borderColor: '#2a2a2a', ...SHADOW.small,
-    marginBottom: SPACING.sm,
+  },
+  cardGlow: {
+    position: 'absolute',
+    left: 26,
+    right: 26,
+    bottom: -1,
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 12,
+    elevation: 8,
   },
   cardUrgent: {
     borderColor: COLORS.primary + '66',

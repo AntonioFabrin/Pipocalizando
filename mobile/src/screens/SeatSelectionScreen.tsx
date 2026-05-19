@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Dimensions, Modal, SafeAreaView,
+  ActivityIndicator, Modal, SafeAreaView, useWindowDimensions,
   StatusBar, Platform,
 } from 'react-native';
 import {
@@ -13,8 +13,6 @@ import {
 import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
 
 // ─── Medidas responsivas ──────────────────────────────────────────────────────
-const { width: SCREEN_W } = Dimensions.get('window');
-
 const ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 const COLS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
@@ -23,17 +21,15 @@ const ROW_LABEL_W  = 14;
 const AISLE_W      = 8;
 const SEAT_GAP     = 3;
 const H_PADDING    = SPACING.sm * 2;        // 16px total
-const AVAILABLE_W  = SCREEN_W - H_PADDING - ROW_LABEL_W - AISLE_W - (SEAT_GAP * (COLS.length - 1));
-const SEAT_SIZE    = Math.floor(AVAILABLE_W / COLS.length);  // ~28-32px em 390px
-const SEAT_FONT    = Math.max(7, Math.floor(SEAT_SIZE * 0.28));
+const WEB_APP_MAX_W = 430;
 
 type SeatStatus = 'free' | 'occupied' | 'selected';
 const seatId = (row: string, col: number) => `${row}${col}`;
 
 // ─── Assento ──────────────────────────────────────────────────────────────────
 const Seat = React.memo(function Seat({
-  label, status, onPress,
-}: { label: string; status: SeatStatus; onPress: () => void }) {
+  label, status, onPress, seatSize, seatFont,
+}: { label: string; status: SeatStatus; onPress: () => void; seatSize: number; seatFont: number }) {
   const isOccupied = status === 'occupied';
   const isSelected = status === 'selected';
 
@@ -45,14 +41,15 @@ const Seat = React.memo(function Seat({
       hitSlop={{ top: 2, bottom: 2, left: 2, right: 2 }}
       style={[
         seatStyle.base,
+        { width: seatSize },
         isOccupied && seatStyle.occupied,
         isSelected && seatStyle.selected,
       ]}
     >
       {/* ícone de cadeira simples */}
-      <View style={[seatStyle.back, isOccupied && seatStyle.backOccupied, isSelected && seatStyle.backSelected]} />
-      <View style={[seatStyle.seat, isOccupied && seatStyle.seatOccupied, isSelected && seatStyle.seatSelected]}>
-        <Text style={[seatStyle.label, { fontSize: SEAT_FONT }, isSelected && { color: '#fff' }, isOccupied && { color: '#4a2020' }]}>
+      <View style={[seatStyle.back, { width: seatSize - 4, height: Math.round(seatSize * 0.35) }, isOccupied && seatStyle.backOccupied, isSelected && seatStyle.backSelected]} />
+      <View style={[seatStyle.seat, { width: seatSize - 2, height: Math.round(seatSize * 0.55) }, isOccupied && seatStyle.seatOccupied, isSelected && seatStyle.seatSelected]}>
+        <Text style={[seatStyle.label, { fontSize: seatFont }, isSelected && { color: '#fff' }, isOccupied && { color: '#4a2020' }]}>
           {label}
         </Text>
       </View>
@@ -61,11 +58,11 @@ const Seat = React.memo(function Seat({
 });
 
 const seatStyle = StyleSheet.create({
-  base:          { width: SEAT_SIZE, alignItems: 'center', justifyContent: 'flex-end' },
+  base:          { alignItems: 'center', justifyContent: 'flex-end' },
   occupied:      { opacity: 0.75 },
   selected:      { transform: [{ translateY: -1 }] },
-  back:          { width: SEAT_SIZE - 4, height: Math.round(SEAT_SIZE * 0.35), borderRadius: 3, backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a', marginBottom: 1 },
-  seat:          { width: SEAT_SIZE - 2, height: Math.round(SEAT_SIZE * 0.55), borderRadius: 4, backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a', justifyContent: 'center', alignItems: 'center' },
+  back:          { borderRadius: 3, backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a', marginBottom: 1 },
+  seat:          { borderRadius: 4, backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a', justifyContent: 'center', alignItems: 'center' },
   // ocupado
   backOccupied:  { backgroundColor: '#2a1010', borderColor: '#3a1818' },
   seatOccupied:  { backgroundColor: '#2a1010', borderColor: '#3a1818' },
@@ -77,6 +74,7 @@ const seatStyle = StyleSheet.create({
 
 // ─── Tela ─────────────────────────────────────────────────────────────────────
 export default function SeatSelectionScreen({ route, navigation }: any) {
+  const { width: windowWidth } = useWindowDimensions();
   const {
     movieId, sessionId, movieTitle,
     sessionDate, sessionTime, roomName, pricePerSeat,
@@ -93,6 +91,10 @@ export default function SeatSelectionScreen({ route, navigation }: any) {
   const [showConfirm,  setShowConfirm]  = useState(false);
   const [reserveUntil, setReserveUntil] = useState<Date | null>(null);
   const [secondsLeft,  setSecondsLeft]  = useState(0);
+  const layoutWidth = Math.min(windowWidth || WEB_APP_MAX_W, WEB_APP_MAX_W);
+  const availableW = layoutWidth - H_PADDING - ROW_LABEL_W - AISLE_W - (SEAT_GAP * (COLS.length - 1));
+  const seatSize = Math.max(24, Math.min(34, Math.floor(availableW / COLS.length)));
+  const seatFont = Math.max(7, Math.floor(seatSize * 0.28));
 
   const loadOccupied = useCallback(async () => {
     try {
@@ -285,7 +287,13 @@ export default function SeatSelectionScreen({ route, navigation }: any) {
                       {/* Corredor fino entre col 5 e 6 */}
                       {col === 6 && <View style={styles.aisle} />}
                       <View style={{ marginHorizontal: SEAT_GAP / 2 }}>
-                        <Seat label={label} status={status} onPress={() => toggleSeat(label)} />
+                        <Seat
+                          label={label}
+                          status={status}
+                          onPress={() => toggleSeat(label)}
+                          seatSize={seatSize}
+                          seatFont={seatFont}
+                        />
                       </View>
                     </React.Fragment>
                   );
