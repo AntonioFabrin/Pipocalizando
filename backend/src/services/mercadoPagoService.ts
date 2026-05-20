@@ -143,7 +143,6 @@ export const createCheckoutPreference = async (input: PreferenceInput): Promise<
       name: input.payer.name || undefined,
     },
     payment_methods: {
-      default_payment_method_id: 'pix',
       installments: 1,
     },
     external_reference: `ticket_order_${input.orderId}`,

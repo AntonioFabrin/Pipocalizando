@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Coffee, CupSoda, PackagePlus, Popcorn, Search, ShoppingCart, Sparkles } from 'lucide-react';
+import { Coffee, CupSoda, PackagePlus, Pencil, Plus, Popcorn, Search, ShoppingCart, Sparkles } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { cn } from '@/src/lib/utils';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Product {
   id: number;
@@ -52,6 +54,7 @@ const formatPrice = (price: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(price || 0));
 
 export default function Products() {
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +97,7 @@ export default function Products() {
   }, [activeCategory, products, search]);
 
   const featuredProduct = products.find((product) => normalizeCategory(product.category_name).includes('combo')) || products[0];
+  const isSeller = user?.role === 'admin' || user?.role === 'seller' || user?.role === 'super_admin';
 
   return (
     <motion.div
@@ -168,15 +172,25 @@ export default function Products() {
           })}
         </div>
 
-        <div className="relative w-full lg:w-[320px]">
-          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
-          <input
-            type="text"
-            placeholder="Buscar produto..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-12 pr-4 text-sm transition-colors focus:border-cinema-red/50 focus:outline-none"
-          />
+        <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+          {isSeller && (
+            <Link to="/admin/products/new">
+              <Button variant="primary" className="w-full rounded-xl sm:w-auto">
+                <Plus className="h-4 w-4" />
+                Novo Produto
+              </Button>
+            </Link>
+          )}
+          <div className="relative w-full lg:w-[320px]">
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+            <input
+              type="text"
+              placeholder="Buscar produto..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-12 pr-4 text-sm transition-colors focus:border-cinema-red/50 focus:outline-none"
+            />
+          </div>
         </div>
       </section>
 
@@ -241,10 +255,24 @@ export default function Products() {
                     </span>
                   </div>
 
-                  <Button className="w-full rounded-xl" disabled={isOutOfStock}>
-                    <ShoppingCart className="h-4 w-4" />
-                    Adicionar
-                  </Button>
+                  <div className="flex gap-2">
+                    {isSeller && (
+                      <Link to={`/admin/products/edit/${product.id}`} className="shrink-0">
+                        <Button
+                          variant="glass"
+                          className="h-full rounded-xl border border-white/10 px-3"
+                          aria-label={`Editar ${product.name}`}
+                          title="Editar produto"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    )}
+                    <Button className="w-full rounded-xl" disabled={isOutOfStock}>
+                      <ShoppingCart className="h-4 w-4" />
+                      Adicionar
+                    </Button>
+                  </div>
                 </div>
               </motion.article>
             );

@@ -11,7 +11,7 @@ import { motion } from 'motion/react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../services/api';
-import { UploadCloud, Film, Calendar, DollarSign, ArrowLeft, Loader2 } from 'lucide-react';
+import { UploadCloud, Film, Calendar, DollarSign, ArrowLeft, Loader2, UserRound } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 
 export default function CreateMovie() {
@@ -29,6 +29,7 @@ export default function CreateMovie() {
   const [duration, setDuration] = useState('');
   const [premiereDate, setPremiereDate] = useState('');
   const [onDisplayUntil, setOnDisplayUntil] = useState('');
+  const [director, setDirector] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   
@@ -78,6 +79,7 @@ export default function CreateMovie() {
             setOnDisplayUntil(m.on_display_until.split('T')[0]);
           }
           
+          setDirector(m.director || '');
           setDescription(m.description || '');
           setPrice(m.price ? String(m.price) : '');
           if (m.poster_url) {
@@ -179,6 +181,7 @@ export default function CreateMovie() {
         category_id: categoryId || null,
         rating,
         duration_minutes: duration ? parseInt(duration, 10) : null,
+        director: director.trim() || null,
         premiere_date: premiereDate || null,
         on_display_until: onDisplayUntil || null,
         description,
@@ -300,6 +303,21 @@ export default function CreateMovie() {
                   placeholder="Ex: Vingadores: Ultimato"
                   className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:border-cinema-red/50 transition-colors text-white"
                 />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-xs font-bold uppercase tracking-widest text-white/50">
+                  Diretor do Filme
+                </label>
+                <div className="relative">
+                  <UserRound className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                  <input
+                    type="text"
+                    value={director}
+                    onChange={(e) => setDirector(e.target.value)}
+                    placeholder="Ex: Denis Villeneuve"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:border-cinema-red/50 transition-colors text-white"
+                  />
+                </div>
               </div>
             </div>
 

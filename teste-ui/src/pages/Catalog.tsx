@@ -18,29 +18,67 @@ import { useAuth } from '../contexts/AuthContext';
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 
-const CATEGORIES = ['Todos', 'Ação', 'Ficção', 'Animação', 'Terror', 'Suspense', 'Drama'];
+const ALL_CATEGORIES = 'all';
+const FALLBACK_CATEGORIES = ['Ação', 'Ficção', 'Animação', 'Terror', 'Suspense', 'Drama'];
+
+const normalizeText = (value?: string | null) =>
+  (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+const splitMovieTags = (value?: string | null) =>
+  (value || '')
+    .split(/[,;/|]+/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+const getMovieTags = (movie: { category_name?: string | null; genre?: string | null }) => [
+  ...splitMovieTags(movie.category_name),
+  ...splitMovieTags(movie.genre),
+];
 
 export default function Catalog() {
   const { movies, isLoading, error, setMovies } = useMovies();
   const { user } = useAuth();
   const [search, setSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState('Todos');
+  const [activeCategory, setActiveCategory] = useState(ALL_CATEGORIES);
 
   const isSeller = user?.role === 'admin' || user?.role === 'seller' || user?.role === 'super_admin';
 
+  const categories = useMemo(() => {
+    const names = movies
+      .flatMap(getMovieTags)
+      .filter((name) => Boolean(name.trim()));
+
+    const uniqueCategories = new Map<string, string>();
+    [...names, ...FALLBACK_CATEGORIES].forEach((name) => {
+      const key = normalizeText(name);
+      if (key && !uniqueCategories.has(key)) {
+        uniqueCategories.set(key, name);
+      }
+    });
+
+    return ['Todos', ...Array.from(uniqueCategories.values())];
+  }, [movies]);
+
   const filteredMovies = useMemo(() => {
     let result = movies;
+    const normalizedSearch = normalizeText(search);
 
-    if (search.trim()) {
+    if (normalizedSearch) {
       result = result.filter((m) =>
-        m.title.toLowerCase().includes(search.toLowerCase())
+        normalizeText(m.title).includes(normalizedSearch)
       );
     }
 
-    if (activeCategory !== 'Todos') {
-      result = result.filter((m) =>
-        m.genre?.toLowerCase().includes(activeCategory.toLowerCase())
-      );
+    if (activeCategory !== ALL_CATEGORIES) {
+      result = result.filter((m) => {
+        const tags = getMovieTags(m).map(normalizeText);
+
+        return tags.includes(activeCategory);
+      });
     }
 
     return result;
@@ -89,26 +127,38 @@ export default function Catalog() {
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
-        {CATEGORIES.map((cat) => (
+        {categories.map((cat) => {
+          const categoryValue = cat === 'Todos' ? ALL_CATEGORIES : normalizeText(cat);
+
+          return (
           <Button 
             key={cat} 
-            variant={activeCategory === cat ? 'primary' : 'secondary'} 
+            type="button"
+            variant={activeCategory === categoryValue ? 'primary' : 'secondary'} 
             size="sm" 
             className="rounded-xl whitespace-nowrap px-6"
-            onClick={() => setActiveCategory(cat)}
+            onClick={() => setActiveCategory(categoryValue)}
           >
             {cat}
           </Button>
-        ))}
+          );
+        })}
       </div>
 
       {isLoading && <Spinner message="Carregando filmes..." />}
       {error && <ErrorMessage message={error} onRetry={() => window.location.reload()} />}
       {!isLoading && !error && (
-        <MovieGrid
-          movies={filteredMovies}
-          onMovieDeleted={(movieId) => setMovies((current) => current.filter((movie) => movie.id !== movieId))}
-        />
+        filteredMovies.length > 0 ? (
+          <MovieGrid
+            key={`${activeCategory}-${filteredMovies.map((movie) => movie.id).join('-')}`}
+            movies={filteredMovies}
+            onMovieDeleted={(movieId) => setMovies((current) => current.filter((movie) => movie.id !== movieId))}
+          />
+        ) : (
+          <div className="min-h-[320px] flex items-center justify-center text-center text-white/50">
+            Nenhum filme encontrado para este filtro.
+          </div>
+        )
       )}
     </motion.div>
   );

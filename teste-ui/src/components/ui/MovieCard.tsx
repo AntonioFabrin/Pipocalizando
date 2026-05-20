@@ -4,7 +4,7 @@ import { Calendar, Clock, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { Button } from './Button';
 import { useAuth } from '../../contexts/AuthContext';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
 interface MovieCardProps {
@@ -27,8 +27,10 @@ interface MovieCardProps {
 
 export function MovieCard({ movie, className, onDeleted }: MovieCardProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [isDeleting, setIsDeleting] = useState(false);
   const isSeller = user?.role === 'admin' || user?.role === 'seller' || user?.role === 'super_admin';
+  const moviePath = `/movies/${movie.id}`;
 
   const handleDelete = async () => {
     const confirmed = window.confirm(`Deseja apagar "${movie.title}"?`);
@@ -42,6 +44,15 @@ export function MovieCard({ movie, className, onDeleted }: MovieCardProps) {
       window.alert(error?.message || 'Nao foi possivel apagar este filme.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const openMovie = () => navigate(moviePath);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openMovie();
     }
   };
 
@@ -61,7 +72,11 @@ export function MovieCard({ movie, className, onDeleted }: MovieCardProps) {
   return (
     <motion.div
       variants={itemVariants}
-      className={cn('group relative glass-card flex flex-col overflow-hidden h-full', className)}
+      role="button"
+      tabIndex={0}
+      onClick={openMovie}
+      onKeyDown={handleKeyDown}
+      className={cn('group relative glass-card flex flex-col overflow-hidden h-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-cinema-red/60', className)}
     >
       {/* Poster Image */}
       <div className="relative aspect-[2/3] overflow-hidden">
@@ -116,7 +131,7 @@ export function MovieCard({ movie, className, onDeleted }: MovieCardProps) {
             </div>
             {isSeller ? (
               <div className="flex items-center gap-2">
-                <Link to={`/admin/movies/edit/${movie.id}`}>
+                <Link to={`/admin/movies/edit/${movie.id}`} onClick={(event) => event.stopPropagation()}>
                   <Button size="sm" variant="glass" className="rounded-xl p-2.5 flex items-center justify-center border border-white/10 hover:border-cinema-red transition-colors w-9 h-9">
                     <Pencil className="w-4 h-4 text-white" />
                   </Button>
@@ -125,19 +140,36 @@ export function MovieCard({ movie, className, onDeleted }: MovieCardProps) {
                   size="sm"
                   variant="glass"
                   className="rounded-xl p-2.5 flex items-center justify-center border border-white/10 hover:border-cinema-red transition-colors w-9 h-9"
-                  onClick={handleDelete}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleDelete();
+                  }}
                   disabled={isDeleting}
                   aria-label={`Apagar ${movie.title}`}
                   title="Apagar filme"
                 >
                   <Trash2 className="w-4 h-4 text-cinema-red" />
                 </Button>
-                <Button size="sm" className="rounded-xl px-4 py-2">
+                <Button
+                  size="sm"
+                  className="rounded-xl px-4 py-2"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openMovie();
+                  }}
+                >
                   Reservar
                 </Button>
               </div>
             ) : (
-              <Button size="sm" className="rounded-xl px-4 py-2">
+              <Button
+                size="sm"
+                className="rounded-xl px-4 py-2"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openMovie();
+                }}
+              >
                 Reservar
               </Button>
             )}
