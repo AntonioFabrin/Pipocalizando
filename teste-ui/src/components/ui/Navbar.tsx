@@ -16,6 +16,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const NAV_LINKS = [
   { label: 'Sessões', path: '/sessions' },
   { label: 'Filmes', path: '/catalog' },
+  { label: 'Produtos', path: '/products' },
   { label: 'Preços', path: '/pricing' },
   { label: 'Sobre', path: '/about' },
 ];

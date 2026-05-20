@@ -8,6 +8,7 @@ import { Popcorn } from 'lucide-react';
 import Home from './pages/Home';
 import Sessions from './pages/Sessions';
 import Catalog from './pages/Catalog';
+import Products from './pages/Products';
 import Pricing from './pages/Pricing';
 import About from './pages/About';
 import Login from './pages/Login';
@@ -23,6 +24,7 @@ function AnimatedRoutes() {
           <Route path="/" element={<Home />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/catalog" element={<Catalog />} />
+          <Route path="/products" element={<Products />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/about" element={<About />} />
           <Route path="/login" element={<Login />} />
