@@ -1,0 +1,6 @@
+{
+  "name": "Pipocalizando",
+  "description": "Uma experiência cinematográfica imersiva para compra de ingressos e combos de cinema.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

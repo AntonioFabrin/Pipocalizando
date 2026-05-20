@@ -238,29 +238,38 @@ export default function CreateMovieScreen({ navigation, route }: any) {
       let result: ImagePicker.ImagePickerResult;
       if (source === 'camera') {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') { showAlert('Permissão negada', 'Câmera não autorizada.'); return; }
+        if (status !== 'granted') { showAlert('Permissão negada', 'Câmera não autorizada. Por favor, habilite a permissão nas configurações do app.'); return; }
         result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [2, 3], quality: 0.85 });
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') { showAlert('Permissão negada', 'Galeria não autorizada.'); return; }
+        if (status !== 'granted') { showAlert('Permissão negada', 'Galeria não autorizada. Por favor, habilite a permissão nas configurações do app.'); return; }
         result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [2, 3], quality: 0.85 });
       }
-      if (!result.canceled && result.assets[0]) {
+      
+      if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
+        console.log('[pickImage] asset.uri:', asset.uri);
         setLocalPosterUri(asset.uri);
         setUploadingPoster(true);
         try {
+          console.log('[pickImage] calling uploadImage...');
           const url = await uploadImage(asset.uri, `poster-${Date.now()}.jpg`);
+          console.log('[pickImage] uploadImage returned:', url);
           setPosterUrl(url);
-        } catch {
-          showAlert('Erro', 'Falha ao enviar imagem. Tente novamente.');
+        } catch (err: any) {
+          console.error('[pickImage] uploadImage error:', err);
+          const errorMsg = err?.response?.data?.message || err?.message || 'Erro desconhecido';
+          showAlert('Erro', `Falha ao enviar imagem: ${errorMsg}\n\nVerifique se o backend está rodando e se o formato da imagem é válido (JPG, PNG, WEBP ou GIF até 5MB).`);
           setLocalPosterUri(null);
         } finally {
           setUploadingPoster(false);
         }
+      } else {
+        console.log('[pickImage] result.canceled or no asset:', result.canceled, result.assets);
       }
-    } catch {
-      showAlert('Erro', 'Não foi possível abrir o seletor de imagem.');
+    } catch (err: any) {
+      console.error('[pickImage] catch error:', err);
+      showAlert('Erro', `Não foi possível abrir o seletor de imagem.\n\nDetalhe: ${err?.message || 'Erro desconhecido'}`);
     }
   };
 

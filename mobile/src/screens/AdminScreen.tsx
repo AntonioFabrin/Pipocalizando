@@ -14,6 +14,10 @@ import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
 
 const POSTER_PLACEHOLDER = require('../../assets/Image-not-found.png');
 
+const isValidPosterUrl = (url?: string): boolean => {
+  return !!(url && typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://')));
+};
+
 const STATUS_OPTIONS = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
 const STATUS_MAP: Record<string, { label: string; color: string; emoji: string }> = {
   pending:   { label: 'Aguardando', color: COLORS.warning,       emoji: '⏳' },
@@ -309,7 +313,7 @@ export default function AdminScreen({ navigation }: any) {
                 : movies.map((m: any) => (
                     <View key={m.id} style={styles.movieCard}>
                       <Image
-                        source={m.poster_url ? { uri: m.poster_url } : POSTER_PLACEHOLDER}
+                        source={isValidPosterUrl(m.poster_url) ? { uri: m.poster_url } : POSTER_PLACEHOLDER}
                         style={styles.moviePoster}
                         resizeMode="cover"
                       />

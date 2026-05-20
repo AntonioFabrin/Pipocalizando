@@ -9,6 +9,11 @@ import { useAuth } from '../context/AuthContext';
 import { COLORS, SPACING, RADIUS, SHADOW } from '../types/theme';
 
 const POSTER_PLACEHOLDER = require('../../assets/Image-not-found.png');
+
+const isValidPosterUrl = (url?: string): boolean => {
+  return !!(url && typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://')));
+};
+
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 // Poster: tamanho fixo estilo ingresso.com
@@ -147,7 +152,7 @@ export default function MovieDetailScreen({ route, navigation }: any) {
         <View style={[styles.hero, { height: HERO_H }]}>
           {/* Banner de fundo (borrado via sobreposição) */}
           <Image
-            source={movie.poster_url ? { uri: movie.poster_url } : POSTER_PLACEHOLDER}
+            source={isValidPosterUrl(movie.poster_url) ? { uri: movie.poster_url } : POSTER_PLACEHOLDER}
             style={styles.heroBg}
             resizeMode="cover"
             blurRadius={18}
@@ -160,7 +165,7 @@ export default function MovieDetailScreen({ route, navigation }: any) {
             {/* Poster com borda */}
             <View style={styles.posterWrapper}>
               <Image
-                source={movie.poster_url ? { uri: movie.poster_url } : POSTER_PLACEHOLDER}
+                source={isValidPosterUrl(movie.poster_url) ? { uri: movie.poster_url } : POSTER_PLACEHOLDER}
                 style={[styles.poster, { width: POSTER_W, height: POSTER_H }]}
                 resizeMode="cover"
               />
