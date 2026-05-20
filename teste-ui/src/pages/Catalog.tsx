@@ -21,12 +21,12 @@ import { Link } from 'react-router-dom';
 const CATEGORIES = ['Todos', 'Ação', 'Ficção', 'Animação', 'Terror', 'Suspense', 'Drama'];
 
 export default function Catalog() {
-  const { movies, isLoading, error } = useMovies();
+  const { movies, isLoading, error, setMovies } = useMovies();
   const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
 
-  const isSeller = user?.role === 'admin' || user?.role === 'seller';
+  const isSeller = user?.role === 'admin' || user?.role === 'seller' || user?.role === 'super_admin';
 
   const filteredMovies = useMemo(() => {
     let result = movies;
@@ -104,7 +104,12 @@ export default function Catalog() {
 
       {isLoading && <Spinner message="Carregando filmes..." />}
       {error && <ErrorMessage message={error} onRetry={() => window.location.reload()} />}
-      {!isLoading && !error && <MovieGrid movies={filteredMovies} />}
+      {!isLoading && !error && (
+        <MovieGrid
+          movies={filteredMovies}
+          onMovieDeleted={(movieId) => setMovies((current) => current.filter((movie) => movie.id !== movieId))}
+        />
+      )}
     </motion.div>
   );
 }

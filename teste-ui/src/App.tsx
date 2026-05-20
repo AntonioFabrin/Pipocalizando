@@ -27,6 +27,7 @@ function AnimatedRoutes() {
           <Route path="/about" element={<About />} />
           <Route path="/login" element={<Login />} />
           <Route path="/admin/movies/new" element={<CreateMovie />} />
+          <Route path="/admin/movies/edit/:id" element={<CreateMovie />} />
         </Routes>
       </div>
     </AnimatePresence>

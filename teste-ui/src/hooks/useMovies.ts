@@ -35,8 +35,11 @@ export function useMovies() {
         setIsLoading(true);
         setError(null);
         const data = await api.get<Movie[]>('/movies');
+        console.log('[useMovies] Filmes retornados do backend:', data);
+        console.log('[useMovies] Primeiro filme (se existir):', data[0]);
         setMovies(data);
       } catch (err: any) {
+        console.error('[useMovies] Erro ao buscar filmes:', err);
         setError(err.message || 'Erro ao carregar filmes.');
       } finally {
         setIsLoading(false);

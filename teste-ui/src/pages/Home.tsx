@@ -17,7 +17,7 @@ import { useMovies } from '../hooks/useMovies';
 import { Link } from 'react-router-dom';
 
 export default function Home() {
-  const { movies, isLoading } = useMovies();
+  const { movies, isLoading, setMovies } = useMovies();
   
   // Pega os primeiros 4 filmes como destaque
   const featuredMovies = movies.slice(0, 4);
@@ -134,7 +134,10 @@ export default function Home() {
           {isLoading ? (
             <Spinner message="Carregando filmes..." />
           ) : (
-            <MovieGrid movies={featuredMovies.length > 0 ? featuredMovies : []} />
+            <MovieGrid
+              movies={featuredMovies.length > 0 ? featuredMovies : []}
+              onMovieDeleted={(movieId) => setMovies((current) => current.filter((movie) => movie.id !== movieId))}
+            />
           )}
         </section>
 

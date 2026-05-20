@@ -5,9 +5,10 @@ import { cn } from '@/src/lib/utils';
 interface MovieGridProps {
   movies: any[];
   className?: string;
+  onMovieDeleted?: (movieId: number) => void;
 }
 
-export function MovieGrid({ movies, className }: MovieGridProps) {
+export function MovieGrid({ movies, className, onMovieDeleted }: MovieGridProps) {
   // Configuração do Antigravity para animação em cascata (Stagger)
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -32,7 +33,7 @@ export function MovieGrid({ movies, className }: MovieGridProps) {
       )}
     >
       {movies.map((movie) => (
-        <MovieCard key={movie.id} movie={movie} />
+        <MovieCard key={movie.id} movie={movie} onDeleted={onMovieDeleted} />
       ))}
     </motion.div>
   );

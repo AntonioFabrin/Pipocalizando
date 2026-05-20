@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Calendar, Clock, Star } from 'lucide-react';
+import { Calendar, Clock, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { Button } from './Button';
+import { useAuth } from '../../contexts/AuthContext';
+import { Link } from 'react-router-dom';
+import api from '../../services/api';
 
 interface MovieCardProps {
   key?: React.Key;
@@ -19,9 +22,29 @@ interface MovieCardProps {
     duration_minutes?: number;
   };
   className?: string;
+  onDeleted?: (movieId: number) => void;
 }
 
-export function MovieCard({ movie, className }: MovieCardProps) {
+export function MovieCard({ movie, className, onDeleted }: MovieCardProps) {
+  const { user } = useAuth();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const isSeller = user?.role === 'admin' || user?.role === 'seller' || user?.role === 'super_admin';
+
+  const handleDelete = async () => {
+    const confirmed = window.confirm(`Deseja apagar "${movie.title}"?`);
+    if (!confirmed) return;
+
+    try {
+      setIsDeleting(true);
+      await api.delete(`/movies/${movie.id}`);
+      onDeleted?.(movie.id);
+    } catch (error: any) {
+      window.alert(error?.message || 'Nao foi possivel apagar este filme.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Variantes para sincronizar com o MovieGrid (Antigravity)
   const itemVariants = {
     hidden: { opacity: 0, y: 30 },
@@ -30,7 +53,7 @@ export function MovieCard({ movie, className }: MovieCardProps) {
       y: 0,
       transition: {
         duration: 0.8,
-        ease: [0.21, 0.47, 0.32, 0.98] // Ease Out suave (Quart)
+        ease: [0.21, 0.47, 0.32, 0.98] as const // Ease Out suave (Quart)
       }
     },
   };
@@ -91,9 +114,33 @@ export function MovieCard({ movie, className }: MovieCardProps) {
                 {movie.price === 0 || !movie.price ? 'Grátis' : `R$ ${Number(movie.price).toFixed(2)}`}
               </span>
             </div>
-            <Button size="sm" className="rounded-xl px-4 py-2">
-              Reservar
-            </Button>
+            {isSeller ? (
+              <div className="flex items-center gap-2">
+                <Link to={`/admin/movies/edit/${movie.id}`}>
+                  <Button size="sm" variant="glass" className="rounded-xl p-2.5 flex items-center justify-center border border-white/10 hover:border-cinema-red transition-colors w-9 h-9">
+                    <Pencil className="w-4 h-4 text-white" />
+                  </Button>
+                </Link>
+                <Button
+                  size="sm"
+                  variant="glass"
+                  className="rounded-xl p-2.5 flex items-center justify-center border border-white/10 hover:border-cinema-red transition-colors w-9 h-9"
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  aria-label={`Apagar ${movie.title}`}
+                  title="Apagar filme"
+                >
+                  <Trash2 className="w-4 h-4 text-cinema-red" />
+                </Button>
+                <Button size="sm" className="rounded-xl px-4 py-2">
+                  Reservar
+                </Button>
+              </div>
+            ) : (
+              <Button size="sm" className="rounded-xl px-4 py-2">
+                Reservar
+              </Button>
+            )}
           </div>
         </div>
       </div>
