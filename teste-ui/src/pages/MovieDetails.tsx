@@ -74,21 +74,7 @@ export default function MovieDetails() {
 
   const sessions = useMemo(() => {
     if (!movie) return [];
-    if (movie.sessions?.length) return movie.sessions;
-
-    if (movie.session_date || movie.session_time) {
-      return [
-        {
-          id: movie.id,
-          session_date: movie.session_date,
-          session_time: movie.session_time,
-          room_name: movie.room_name || movie.room,
-          language: 'dublado',
-        },
-      ];
-    }
-
-    return [];
+    return movie.sessions || [];
   }, [movie]);
 
   if (isLoading) {

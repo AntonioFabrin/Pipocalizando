@@ -23,6 +23,37 @@ const normalizeDateForSql = (value: any): string | null => {
   return clean;
 };
 
+const syncPrimaryMovieSession = async (
+  movieId: number,
+  roomId: any,
+  sessionDate: any,
+  sessionTime: any,
+): Promise<void> => {
+  const normalizedDate = normalizeDateForSql(sessionDate);
+  const normalizedRoomId = Number(roomId);
+
+  if (!movieId || !Number.isInteger(normalizedRoomId) || !normalizedDate || !sessionTime) return;
+
+  const [existingRows]: any = await pool.query(
+    'SELECT id FROM movie_sessions WHERE movie_id = ? AND is_active = 1 ORDER BY id ASC LIMIT 1',
+    [movieId]
+  );
+
+  if (existingRows.length > 0) {
+    await pool.query(
+      'UPDATE movie_sessions SET room_id = ?, session_date = ?, session_time = ? WHERE id = ?',
+      [normalizedRoomId, normalizedDate, sessionTime, existingRows[0].id]
+    );
+    return;
+  }
+
+  await pool.query(
+    `INSERT INTO movie_sessions (movie_id, room_id, session_date, session_time, available_seats, language)
+     VALUES (?, ?, ?, ?, 100, 'dublado')`,
+    [movieId, normalizedRoomId, normalizedDate, sessionTime]
+  );
+};
+
 // ─── Categorias de filmes ────────────────────────────────────────────────────
 
 export const getCategories = async (_req: Request, res: Response): Promise<void> => {
@@ -295,6 +326,7 @@ export const create = async (req: Request, res: Response): Promise<void> => {
         status           || 'coming_soon',
       ]
     );
+    await syncPrimaryMovieSession(result.insertId, room_id, session_date, session_time);
     res.status(201).json({ message: 'Filme criado!', id: result.insertId });
   } catch (err: any) {
     console.error('❌ [movies.create]', err?.message || err);
@@ -344,6 +376,7 @@ export const update = async (req: Request, res: Response): Promise<void> => {
       ]
     );
     if (result.affectedRows === 0) { res.status(404).json({ message: 'Filme não encontrado.' }); return; }
+    await syncPrimaryMovieSession(Number(req.params.id), room_id, session_date, session_time);
     res.json({ message: 'Filme atualizado!' });
   } catch (err: any) {
     console.error('❌ [movies.update]', err?.message || err);
