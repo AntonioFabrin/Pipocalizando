@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import pool from '../config/db';
+import { normalizeRole } from '../utils/roles';
 
 export const getAll = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -16,7 +17,7 @@ export const getAll = async (req: Request, res: Response): Promise<void> => {
 export const getById = async (req: Request, res: Response): Promise<void> => {
   try {
     const requestingUser = (req as any).user;
-    const isAdmin = ['super_admin', 'manager'].includes(requestingUser.role);
+    const isAdmin = ['super_admin', 'manager'].includes(normalizeRole(requestingUser.role));
     if (!isAdmin && String(requestingUser.id) !== String(req.params.id)) {
       res.status(403).json({ message: 'Voce nao tem permissao para consultar este usuario.' });
       return;
@@ -55,7 +56,7 @@ export const create = async (req: Request, res: Response): Promise<void> => {
       manager: ['seller', 'customer'],
     };
 
-    const allowed = allowedRoles[requestingUser.role] || [];
+    const allowed = allowedRoles[normalizeRole(requestingUser.role)] || [];
     const targetRole = role || 'customer';
 
     if (!allowed.includes(targetRole)) {
@@ -107,7 +108,7 @@ export const update = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Não pode alterar um super_admin (a não ser ele mesmo)
-    if (existing[0].role === 'super_admin' && requestingUser.id !== Number(req.params.id)) {
+    if (normalizeRole(existing[0].role) === 'super_admin' && requestingUser.id !== Number(req.params.id)) {
       res.status(403).json({ message: 'Não é permitido alterar o super_admin.' });
       return;
     }
@@ -128,8 +129,8 @@ export const update = async (req: Request, res: Response): Promise<void> => {
       super_admin: ['manager', 'seller', 'customer'],
       manager: ['seller', 'customer'],
     };
-    const allowed = allowedRoles[requestingUser.role] || [];
-    const roleToSet = role && allowed.includes(role) ? role : existing[0].role;
+    const allowed = allowedRoles[normalizeRole(requestingUser.role)] || [];
+    const roleToSet = role && allowed.includes(role) ? role : normalizeRole(existing[0].role);
 
     if (hashedPassword) {
       await pool.query(
@@ -167,13 +168,13 @@ export const remove = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Ninguém pode deletar um super_admin
-    if (existing[0].role === 'super_admin') {
+    if (normalizeRole(existing[0].role) === 'super_admin') {
       res.status(403).json({ message: 'Não é permitido deletar o super_admin.' });
       return;
     }
 
     // Manager só pode deletar seller e customer
-    if (requestingUser.role === 'manager' && !['seller', 'customer'].includes(existing[0].role)) {
+    if (normalizeRole(requestingUser.role) === 'manager' && !['seller', 'customer'].includes(normalizeRole(existing[0].role))) {
       res.status(403).json({ message: 'Você não tem permissão para deletar este usuário.' });
       return;
     }

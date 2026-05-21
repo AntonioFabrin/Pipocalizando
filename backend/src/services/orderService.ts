@@ -4,6 +4,7 @@ import * as PaymentModel from '../models/Payment';
 import * as OrderModel from '../models/Order';
 import { v4 as uuidv4 } from 'uuid';
 import { Order } from '../types';
+import { isSellerLikeRole, normalizeRole } from '../utils/roles';
 
 interface OrderItem {
   product_id: number;
@@ -81,8 +82,8 @@ export const createOrder = async (data: CreateOrderData) => {
 };
 
 export const getOrders = async (user: { id: number; role: string }) => {
-  if (user.role === 'customer') return await OrderModel.findByCustomer(user.id);
-  if (user.role === 'seller') return await OrderModel.findBySeller(user.id);
+  if (normalizeRole(user.role) === 'customer') return await OrderModel.findByCustomer(user.id);
+  if (isSellerLikeRole(user.role)) return await OrderModel.findBySeller(user.id);
   return await OrderModel.findAll();
 };
 

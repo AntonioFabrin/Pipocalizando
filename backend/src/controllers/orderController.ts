@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import pool from '../config/db';
-import { v4 as uuidv4 } from 'uuid';
+import { createCheckoutPreference, createCheckoutReturnUrls } from '../services/mercadoPagoService';
+import { isSellerLikeRole, normalizeRole } from '../utils/roles';
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
 const PAYMENT_METHODS = ['cash', 'credit_card', 'debit_card', 'pix'];
+const MAX_QUANTITY_PER_PRODUCT = 100;
 
 type NormalizedItem = {
   product_id: number;
@@ -18,11 +20,22 @@ const normalizeItems = (items: any[]): NormalizedItem[] | null => {
     const productId = Number(item?.product_id);
     const quantity = Number(item?.quantity);
 
-    if (!Number.isInteger(productId) || productId <= 0 || !Number.isInteger(quantity) || quantity <= 0) {
+    if (
+      !Number.isInteger(productId) ||
+      productId <= 0 ||
+      !Number.isInteger(quantity) ||
+      quantity <= 0 ||
+      quantity > MAX_QUANTITY_PER_PRODUCT
+    ) {
       return null;
     }
 
-    byProduct.set(productId, (byProduct.get(productId) || 0) + quantity);
+    const nextQuantity = (byProduct.get(productId) || 0) + quantity;
+    if (nextQuantity > MAX_QUANTITY_PER_PRODUCT) {
+      return null;
+    }
+
+    byProduct.set(productId, nextQuantity);
   }
 
   return [...byProduct.entries()].map(([product_id, quantity]) => ({ product_id, quantity }));
@@ -35,7 +48,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 
     const { items, notes, payment_method, session_id } = req.body;
     const customerId = (req as any).user.id;
-    const sellerId = (req as any).user.role === 'seller' ? customerId : null;
+    const sellerId = isSellerLikeRole((req as any).user.role) ? customerId : null;
     const paymentMethod = payment_method || 'cash';
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -53,7 +66,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     const normalizedItems = normalizeItems(items);
     if (!normalizedItems) {
       await conn.rollback();
-      res.status(400).json({ message: 'Itens invalidos. Use product_id e quantity inteiros positivos.' });
+      res.status(400).json({ message: `Itens invalidos. Use product_id e quantity entre 1 e ${MAX_QUANTITY_PER_PRODUCT}.` });
       return;
     }
 
@@ -79,7 +92,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     let total = 0;
     for (const item of normalizedItems) {
       const [rows]: any = await conn.query(
-        'SELECT price, stock FROM products WHERE id = ? AND is_active = 1 FOR UPDATE',
+        'SELECT name, price, stock FROM products WHERE id = ? AND is_active = 1 FOR UPDATE',
         [item.product_id]
       );
       if (rows.length === 0) {
@@ -89,12 +102,28 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
       }
       if (Number(rows[0].stock) < item.quantity) {
         await conn.rollback();
-        res.status(400).json({ message: `Estoque insuficiente para produto ${item.product_id}.` });
+        res.status(400).json({ message: `Estoque insuficiente para "${rows[0].name}".` });
         return;
       }
 
       item.unit_price = Number(rows[0].price);
       total += item.unit_price * item.quantity;
+    }
+
+    if (!Number.isFinite(total) || total <= 0) {
+      await conn.rollback();
+      res.status(400).json({ message: 'Total do pedido invalido.' });
+      return;
+    }
+
+    const [customerRows]: any = await conn.query(
+      'SELECT id, name, email FROM users WHERE id = ?',
+      [customerId]
+    );
+    if (customerRows.length === 0) {
+      await conn.rollback();
+      res.status(404).json({ message: 'Cliente nao encontrado.' });
+      return;
     }
 
     const [orderResult]: any = await conn.query(
@@ -109,35 +138,59 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
         [orderId, item.product_id, item.quantity, item.unit_price]
       );
 
-      const [stockUpdate]: any = await conn.query(
-        'UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?',
-        [item.quantity, item.product_id, item.quantity]
-      );
-      if (stockUpdate.affectedRows === 0) {
-        await conn.rollback();
-        res.status(409).json({ message: `Estoque acabou para produto ${item.product_id}.` });
-        return;
-      }
+      // O estoque e consumido somente apos pagamento aprovado, para nao reter itens em pedidos abandonados.
     }
 
-    await conn.query(
-      'INSERT INTO payments (order_id, method, amount, status) VALUES (?, ?, ?, ?)',
-      [orderId, paymentMethod, total, 'pending']
+    const [paymentResult]: any = await conn.query(
+      'INSERT INTO payments (order_id, method, amount, status, expires_at) VALUES (?, ?, ?, ?, ?)',
+      [orderId, paymentMethod, total, 'pending', paymentMethod === 'cash' ? null : new Date(Date.now() + 30 * 60 * 1000)]
     );
+    const paymentId = paymentResult.insertId;
 
-    const ticketCode = `POP-${uuidv4().split('-')[0].toUpperCase()}`;
-    await conn.query(
-      'INSERT INTO tickets (order_id, ticket_code) VALUES (?, ?)',
-      [orderId, ticketCode]
-    );
+    let checkoutUrl: string | null = null;
+    if (paymentMethod !== 'cash') {
+      const backUrls = createCheckoutReturnUrls(
+        process.env.FRONTEND_URL ||
+        req.headers.origin ||
+        'http://localhost:3000',
+        `/payment/return?order_id=${orderId}&source=products`,
+      );
+
+      const preference = await createCheckoutPreference({
+        orderId,
+        paymentId,
+        amount: total,
+        description: `Pedido #${orderId} - Bomboniere`,
+        seats: [],
+        payer: {
+          email: customerRows[0].email,
+          name: customerRows[0].name,
+        },
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        ...(backUrls ? { backUrls } : {}),
+      });
+
+      checkoutUrl = preference.init_point || null;
+      await conn.query(
+        `UPDATE payments
+         SET provider = 'mercado_pago',
+             provider_payment_id = ?,
+             external_reference = ?,
+             checkout_url = ?,
+             status_detail = 'checkout_preference_created'
+         WHERE id = ?`,
+        [String(preference.id), `ticket_order_${orderId}`, checkoutUrl, paymentId]
+      );
+    }
 
     await conn.commit();
     res.status(201).json({
       message: 'Pedido criado!',
       order_id: orderId,
-      ticket_code: ticketCode,
       total,
       payment_method: paymentMethod,
+      checkout_url: checkoutUrl,
+      payment_status: 'pending',
     });
   } catch (error: any) {
     await conn.rollback();
@@ -154,6 +207,7 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
     let query = `
       SELECT o.*,
              tk.ticket_code,
+             tk.ticket_issued_at,
              u.name           AS customer_name,
              p.status         AS payment_status,
              p.method         AS payment_method,
@@ -164,7 +218,9 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
              mv.room          AS room
       FROM orders o
       LEFT JOIN (
-        SELECT order_id, GROUP_CONCAT(ticket_code ORDER BY id SEPARATOR ', ') AS ticket_code
+        SELECT order_id,
+               GROUP_CONCAT(ticket_code ORDER BY id SEPARATOR ', ') AS ticket_code,
+               MIN(issued_at) AS ticket_issued_at
         FROM tickets
         GROUP BY order_id
       ) tk ON tk.order_id = o.id
@@ -177,7 +233,7 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
     if (user.role === 'customer') {
       query += ' WHERE o.customer_id = ?';
       params.push(user.id);
-    } else if (user.role === 'seller') {
+    } else if (isSellerLikeRole(normalizeRole(user.role))) {
       query += ' WHERE o.seller_id = ?';
       params.push(user.id);
     }

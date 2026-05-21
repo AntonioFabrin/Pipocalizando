@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import pool from '../config/db';
 
 const isMissingMercadoPagoColumns = (err: any): boolean =>
@@ -38,6 +39,51 @@ export const cleanupExpiredTicketPayments = async (conn: any = pool): Promise<vo
 };
 
 export const finalizeTicketOrder = async (conn: any, orderId: number): Promise<void> => {
+  const [orderRows]: any = await conn.query(
+    'SELECT id, status FROM orders WHERE id = ? FOR UPDATE',
+    [orderId]
+  );
+
+  if (orderRows.length === 0) {
+    throw new Error('Pedido nao encontrado para confirmacao.');
+  }
+
+  if (orderRows[0].status === 'confirmed') {
+    return;
+  }
+
+  const [existingTickets]: any = await conn.query(
+    'SELECT id, ticket_code FROM tickets WHERE order_id = ? FOR UPDATE',
+    [orderId]
+  );
+
+  const [productRows]: any = await conn.query(
+    `SELECT oi.product_id,
+            oi.quantity,
+            p.name,
+            p.stock
+     FROM order_items oi
+     JOIN products p ON p.id = oi.product_id
+     WHERE oi.order_id = ?
+     FOR UPDATE`,
+    [orderId]
+  );
+
+  for (const item of productRows) {
+    if (Number(item.stock) < Number(item.quantity)) {
+      throw new Error(`Estoque insuficiente para confirmar "${item.name}".`);
+    }
+
+    const [stockUpdate]: any = await conn.query(
+      'UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?',
+      [item.quantity, item.product_id, item.quantity]
+    );
+
+    if (stockUpdate.affectedRows === 0) {
+      throw new Error(`Estoque acabou para "${item.name}".`);
+    }
+  }
+
   const [ticketRows]: any = await conn.query(
     `SELECT session_id, COUNT(*) AS total
      FROM tickets
@@ -58,6 +104,14 @@ export const finalizeTicketOrder = async (conn: any, orderId: number): Promise<v
     if (seatUpdate.affectedRows === 0) {
       throw new Error('Nao ha assentos disponiveis suficientes para confirmar este pedido.');
     }
+  }
+
+  if (existingTickets.length === 0) {
+    const ticketCode = `POP-${uuidv4().split('-')[0].toUpperCase()}`;
+    await conn.query(
+      'INSERT INTO tickets (order_id, ticket_code) VALUES (?, ?)',
+      [orderId, ticketCode]
+    );
   }
 
   await conn.query(
@@ -91,7 +145,7 @@ export const cancelTicketOrder = async (conn: any, orderId: number, detail = 'ca
       [orderId]
     );
   }
-  await conn.query('UPDATE orders SET status = "cancelled" WHERE id = ?', [orderId]);
+  await conn.query('UPDATE orders SET status = "cancelled" WHERE id = ? AND status = "pending"', [orderId]);
   await conn.query(
     `DELETE FROM tickets
      WHERE order_id = ? AND is_used = 0`,

@@ -18,6 +18,7 @@ const ADMIN = ['super_admin', 'manager'];
 // ── AUTH ─────────────────────────────────────────────────
 router.post('/auth/register',          auth.register);
 router.post('/auth/login',             auth.login);
+router.post('/auth/logout',            auth.logout);
 router.get ('/auth/profile',           authMiddleware, auth.getProfile);
 router.post('/auth/forgot-password',   auth.forgotPassword);
 router.post('/auth/verify-reset-code', auth.verifyResetCode);

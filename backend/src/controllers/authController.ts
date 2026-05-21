@@ -3,11 +3,33 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db';
 import crypto from 'crypto';
+import { normalizeRole } from '../utils/roles';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET não definido no .env!');
 }
+
+const setAuthCookie = (res: Response, token: string) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  res.cookie('access_token', token, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: '/',
+  });
+};
+
+const clearAuthCookie = (res: Response) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  res.clearCookie('access_token', {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    path: '/',
+  });
+};
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -34,6 +56,13 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       'INSERT INTO users (name, email, password, role, phone) VALUES (?, ?, ?, ?, ?)',
       [name, email, hashedPassword, 'customer', phone]
     );
+
+    const token = jwt.sign(
+      { id: result.insertId, email, role: 'customer' },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    setAuthCookie(res, token);
 
     res.status(201).json({
       message: 'Usuário criado!',
@@ -63,14 +92,15 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       res.status(401).json({ message: 'Credenciais inválidas.' });
       return;
     }
+    const role = normalizeRole(user.role);
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
+    setAuthCookie(res, token);
     res.json({
-      token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone }
+      user: { id: user.id, name: user.name, email: user.email, role, phone: user.phone }
     });
   } catch (error: any) {
     console.error('❌ [login]', error?.message || error);
@@ -93,6 +123,11 @@ export const getProfile = async (req: Request, res: Response): Promise<void> => 
     console.error('❌ [getProfile]', error?.message || error);
     res.status(500).json({ message: 'Erro interno', detail: error?.message });
   }
+};
+
+export const logout = async (_req: Request, res: Response): Promise<void> => {
+  clearAuthCookie(res);
+  res.json({ message: 'Logout realizado.' });
 };
 
 export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
