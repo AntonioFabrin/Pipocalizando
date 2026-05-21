@@ -21,7 +21,7 @@ const formatCurrency = (value: number) =>
 export default function Cart() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { items, totalItems, totalPrice, updateQuantity, removeItem } = useCart();
+  const { items, totalItems, totalPrice, updateQuantity, removeItem, clearCart } = useCart();
   const [paymentMethod, setPaymentMethod] = useState('pix');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,6 +72,7 @@ export default function Cart() {
         total: Number(response.total || 0),
         message: 'Pedido criado. Aguarde a confirmação do pagamento.',
       });
+      clearCart();
     } catch (err: any) {
       setError(err.message || 'Nao foi possivel finalizar a compra.');
     } finally {

@@ -69,16 +69,18 @@ export function Navbar() {
           <div className="h-6 w-px bg-white/10 hidden sm:block" />
 
           <div className="flex items-center gap-2">
-            <Link to="/cart">
-              <Button variant="ghost" size="sm" className="relative p-2">
-                <ShoppingCart className="w-5 h-5" />
-                {totalItems > 0 && (
-                  <span className="absolute top-1 right-1 min-w-4 h-4 px-1 bg-cinema-red rounded-full text-[8px] flex items-center justify-center border-2 border-cinema-black">
-                    {totalItems}
-                  </span>
-                )}
-              </Button>
-            </Link>
+            {isAuthenticated && (
+              <Link to="/cart">
+                <Button variant="ghost" size="sm" className="relative p-2">
+                  <ShoppingCart className="w-5 h-5" />
+                  {totalItems > 0 && (
+                    <span className="absolute top-1 right-1 min-w-4 h-4 px-1 bg-cinema-red rounded-full text-[8px] flex items-center justify-center border-2 border-cinema-black">
+                      {totalItems}
+                    </span>
+                  )}
+                </Button>
+              </Link>
+            )}
 
             {isAuthenticated ? (
               <div className="flex items-center gap-2">

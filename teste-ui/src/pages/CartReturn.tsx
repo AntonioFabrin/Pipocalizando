@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { CheckCircle2, Clock3, LoaderCircle, Ticket, ShoppingCart } from 'lucide-react';
+import { CheckCircle2, Clock3, Film, LoaderCircle, Ticket, ShoppingCart } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { Button } from '../components/ui/Button';
@@ -33,6 +33,7 @@ const formatCurrency = (value?: number | null) =>
 export default function CartReturn() {
   const [searchParams] = useSearchParams();
   const orderId = Number(searchParams.get('order_id'));
+  const source = searchParams.get('source');
   const { clearCart } = useCart();
   const [order, setOrder] = useState<OrderSummary | null>(null);
   const [message, setMessage] = useState('Verificando pagamento...');
@@ -139,10 +140,10 @@ export default function CartReturn() {
         )}
 
         <div className="flex flex-wrap gap-3">
-          <Link to="/products">
+          <Link to={source === 'tickets' ? '/sessions' : '/products'}>
             <Button>
-              <ShoppingCart className="h-4 w-4" />
-              Voltar aos produtos
+              {source === 'tickets' ? <Film className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
+              {source === 'tickets' ? 'Voltar as sessoes' : 'Voltar aos produtos'}
             </Button>
           </Link>
           {!isApproved && (

@@ -4,6 +4,7 @@ import { Navbar } from './components/ui/Navbar';
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
 import { Popcorn } from 'lucide-react';
+import { RequireAuth } from './components/auth/RequireAuth';
 
 // Pages
 import Home from './pages/Home';
@@ -33,8 +34,9 @@ function AnimatedRoutes() {
           <Route path="/movies/:id" element={<MovieDetails />} />
           <Route path="/seats" element={<SeatSelection />} />
           <Route path="/products" element={<Products />} />
-          <Route path="/cart" element={<Cart />} />
-          <Route path="/cart/return" element={<CartReturn />} />
+          <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
+          <Route path="/cart/return" element={<RequireAuth><CartReturn /></RequireAuth>} />
+          <Route path="/payment/return" element={<RequireAuth><CartReturn /></RequireAuth>} />
           <Route path="/about" element={<About />} />
           <Route path="/login" element={<Login />} />
           <Route path="/admin" element={<AdminDashboard />} />

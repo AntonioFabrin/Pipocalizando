@@ -42,6 +42,8 @@ type MercadoPagoPreference = {
   external_reference?: string;
 };
 
+type MercadoPagoBackUrls = NonNullable<PreferenceInput['backUrls']>;
+
 export class MercadoPagoApiError extends Error {
   status: number;
   responseBody: unknown;
@@ -62,6 +64,62 @@ const getAccessToken = (): string => {
     throw new Error('MERCADO_PAGO_ACCESS_TOKEN nao definido no .env.');
   }
   return token;
+};
+
+const normalizeBackUrl = (value?: string): string | null => {
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeBackUrls = (backUrls?: MercadoPagoBackUrls): MercadoPagoBackUrls | null => {
+  if (!backUrls) return null;
+
+  const success = normalizeBackUrl(backUrls.success);
+  if (!success) return null;
+
+  const normalized: MercadoPagoBackUrls = { success };
+
+  if (backUrls.pending) {
+    const pending = normalizeBackUrl(backUrls.pending);
+    if (!pending) return null;
+    normalized.pending = pending;
+  }
+
+  if (backUrls.failure) {
+    const failure = normalizeBackUrl(backUrls.failure);
+    if (!failure) return null;
+    normalized.failure = failure;
+  }
+
+  return normalized;
+};
+
+export const createCheckoutReturnUrls = (
+  frontendUrl: string | undefined,
+  returnPath: string,
+): MercadoPagoBackUrls | undefined => {
+  if (!frontendUrl) return undefined;
+
+  try {
+    const baseUrl = new URL(frontendUrl);
+    if (baseUrl.protocol !== 'https:') return undefined;
+
+    const returnUrl = new URL(returnPath, baseUrl);
+    const href = returnUrl.toString();
+    return {
+      success: href,
+      pending: href,
+      failure: href,
+    };
+  } catch {
+    return undefined;
+  }
 };
 
 const parseMercadoPagoResponse = async (response: Response): Promise<MercadoPagoPayment> => {
@@ -132,6 +190,7 @@ export const createCheckoutPreference = async (input: PreferenceInput): Promise<
   const payerEmail = process.env.MERCADO_PAGO_PAYER_EMAIL_OVERRIDE || input.payer.email;
   const checkoutMode = process.env.MERCADO_PAGO_CHECKOUT_MODE || 'production';
   const preferenceExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+  const backUrls = normalizeBackUrls(input.backUrls);
   const body: Record<string, unknown> = {
     items: [
       {
@@ -160,8 +219,8 @@ export const createCheckoutPreference = async (input: PreferenceInput): Promise<
     },
   };
 
-  if (input.backUrls) {
-    body.back_urls = input.backUrls;
+  if (backUrls) {
+    body.back_urls = backUrls;
     body.auto_return = 'approved';
   }
 

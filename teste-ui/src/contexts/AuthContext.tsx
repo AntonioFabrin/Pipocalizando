@@ -4,12 +4,12 @@
  * Agente responsável: Desenvolvedor Frontend
  *
  * Gerencia o estado de autenticação (login/logout/registro),
- * armazena o token JWT no localStorage e expõe dados do usuário
+ * mantém apenas os dados do usuário na sessionStorage; o JWT fica em cookie HttpOnly.
  * para toda a aplicação via React Context.
  */
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import api from '../services/api';
+import api, { clearSession, getStoredUser, storeSession } from '../services/api';
 
 interface User {
   id: string;
@@ -40,65 +40,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Ao montar, tenta recuperar sessão do localStorage
+  // Ao montar, tenta recuperar sessão ativa e migra credenciais legadas do localStorage.
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
+    const storedUser = getStoredUser();
+    let mounted = true;
 
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      const parsedUser = JSON.parse(storedUser);
-      setUser({
-        ...parsedUser,
-        role: normalizeRole(parsedUser.role),
-      });
+    if (storedUser) {
+      api.get<User>('/auth/profile')
+        .then((profile) => {
+          if (!mounted) return;
+
+          const normalizedUser = {
+            ...profile,
+            role: normalizeRole(profile.role),
+          };
+          storeSession(normalizedUser);
+          setUser(normalizedUser);
+          setToken('cookie');
+        })
+        .catch(() => {
+          if (!mounted) return;
+          clearSession();
+          setUser(null);
+          setToken(null);
+        })
+        .finally(() => {
+          if (mounted) setIsLoading(false);
+        });
+    } else {
+      setIsLoading(false);
     }
 
-    setIsLoading(false);
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   async function login(email: string, password: string) {
-    const response = await api.post<{ token: string; user: User }>('/auth/login', {
+    const response = await api.post<{ user: User }>('/auth/login', {
       email,
       password,
     });
 
-    localStorage.setItem('token', response.token);
     const normalizedUser = {
       ...response.user,
       role: normalizeRole(response.user.role),
     };
-    localStorage.setItem('user', JSON.stringify(normalizedUser));
+    storeSession(normalizedUser);
 
-    setToken(response.token);
+    setToken('cookie');
     setUser(normalizedUser);
   }
 
   async function register(name: string, email: string, password: string) {
-    const response = await api.post<{ token: string; user: User }>('/auth/register', {
+    const response = await api.post<{ user: User }>('/auth/register', {
       name,
       email,
       password,
     });
 
-    localStorage.setItem('token', response.token);
     const normalizedUser = {
       ...response.user,
       role: normalizeRole(response.user.role),
     };
-    localStorage.setItem('user', JSON.stringify(normalizedUser));
+    storeSession(normalizedUser);
 
-    setToken(response.token);
+    setToken('cookie');
     setUser(normalizedUser);
   }
 
   function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('pipocalizando_cart');
-    setToken(null);
-    setUser(null);
-    window.location.href = '/login';
+    api.post('/auth/logout').finally(() => {
+      clearSession();
+      localStorage.removeItem('pipocalizando_cart');
+      setToken(null);
+      setUser(null);
+      window.location.href = '/login';
+    });
   }
 
   return (

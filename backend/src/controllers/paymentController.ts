@@ -3,6 +3,20 @@ import pool from '../config/db';
 import { getPayment, getPixData } from '../services/mercadoPagoService';
 import { cancelTicketOrder, finalizeTicketOrder } from '../services/ticketPaymentService';
 
+const WEBHOOK_SECRET_HEADER = 'x-webhook-secret';
+
+const isMercadoPagoWebhookAuthorized = (req: Request): boolean => {
+  const expectedSecret = process.env.MERCADO_PAGO_WEBHOOK_SECRET;
+  if (!expectedSecret) return true;
+
+  const headerSecret = req.headers[WEBHOOK_SECRET_HEADER];
+  const providedSecret = Array.isArray(headerSecret)
+    ? headerSecret[0]
+    : headerSecret || req.query.secret;
+
+  return typeof providedSecret === 'string' && providedSecret === expectedSecret;
+};
+
 const getProviderPaymentId = (req: Request): string | null => {
   const id =
     req.body?.data?.id ||
@@ -170,6 +184,11 @@ export const reject = async (req: Request, res: Response): Promise<void> => {
       res.status(404).json({ message: 'Pagamento nao encontrado.' });
       return;
     }
+    if (paymentRows[0].status !== 'pending') {
+      await conn.rollback();
+      res.status(409).json({ message: 'Somente pagamentos pendentes podem ser rejeitados.' });
+      return;
+    }
 
     await cancelTicketOrder(conn, paymentRows[0].order_id, 'manual_reject');
     await conn.commit();
@@ -184,6 +203,11 @@ export const reject = async (req: Request, res: Response): Promise<void> => {
 
 export const mercadoPagoWebhook = async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!isMercadoPagoWebhookAuthorized(req)) {
+      res.status(401).json({ message: 'Webhook nao autorizado.' });
+      return;
+    }
+
     const providerPaymentId = getProviderPaymentId(req);
     if (!providerPaymentId) {
       res.status(200).json({ message: 'Notificacao ignorada: pagamento nao identificado.' });

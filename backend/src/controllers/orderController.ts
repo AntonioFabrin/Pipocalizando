@@ -1,10 +1,11 @@
 import { Request, Response } from 'express';
 import pool from '../config/db';
-import { createCheckoutPreference } from '../services/mercadoPagoService';
+import { createCheckoutPreference, createCheckoutReturnUrls } from '../services/mercadoPagoService';
 import { isSellerLikeRole, normalizeRole } from '../utils/roles';
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
 const PAYMENT_METHODS = ['cash', 'credit_card', 'debit_card', 'pix'];
+const MAX_QUANTITY_PER_PRODUCT = 100;
 
 type NormalizedItem = {
   product_id: number;
@@ -19,11 +20,22 @@ const normalizeItems = (items: any[]): NormalizedItem[] | null => {
     const productId = Number(item?.product_id);
     const quantity = Number(item?.quantity);
 
-    if (!Number.isInteger(productId) || productId <= 0 || !Number.isInteger(quantity) || quantity <= 0) {
+    if (
+      !Number.isInteger(productId) ||
+      productId <= 0 ||
+      !Number.isInteger(quantity) ||
+      quantity <= 0 ||
+      quantity > MAX_QUANTITY_PER_PRODUCT
+    ) {
       return null;
     }
 
-    byProduct.set(productId, (byProduct.get(productId) || 0) + quantity);
+    const nextQuantity = (byProduct.get(productId) || 0) + quantity;
+    if (nextQuantity > MAX_QUANTITY_PER_PRODUCT) {
+      return null;
+    }
+
+    byProduct.set(productId, nextQuantity);
   }
 
   return [...byProduct.entries()].map(([product_id, quantity]) => ({ product_id, quantity }));
@@ -54,7 +66,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     const normalizedItems = normalizeItems(items);
     if (!normalizedItems) {
       await conn.rollback();
-      res.status(400).json({ message: 'Itens invalidos. Use product_id e quantity inteiros positivos.' });
+      res.status(400).json({ message: `Itens invalidos. Use product_id e quantity entre 1 e ${MAX_QUANTITY_PER_PRODUCT}.` });
       return;
     }
 
@@ -80,7 +92,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     let total = 0;
     for (const item of normalizedItems) {
       const [rows]: any = await conn.query(
-        'SELECT price, stock FROM products WHERE id = ? AND is_active = 1 FOR UPDATE',
+        'SELECT name, price, stock FROM products WHERE id = ? AND is_active = 1 FOR UPDATE',
         [item.product_id]
       );
       if (rows.length === 0) {
@@ -90,12 +102,18 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
       }
       if (Number(rows[0].stock) < item.quantity) {
         await conn.rollback();
-        res.status(400).json({ message: `Estoque insuficiente para produto ${item.product_id}.` });
+        res.status(400).json({ message: `Estoque insuficiente para "${rows[0].name}".` });
         return;
       }
 
       item.unit_price = Number(rows[0].price);
       total += item.unit_price * item.quantity;
+    }
+
+    if (!Number.isFinite(total) || total <= 0) {
+      await conn.rollback();
+      res.status(400).json({ message: 'Total do pedido invalido.' });
+      return;
     }
 
     const [customerRows]: any = await conn.query(
@@ -120,37 +138,23 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
         [orderId, item.product_id, item.quantity, item.unit_price]
       );
 
-      const [stockUpdate]: any = await conn.query(
-        'UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?',
-        [item.quantity, item.product_id, item.quantity]
-      );
-      if (stockUpdate.affectedRows === 0) {
-        await conn.rollback();
-        res.status(409).json({ message: `Estoque acabou para produto ${item.product_id}.` });
-        return;
-      }
+      // O estoque e consumido somente apos pagamento aprovado, para nao reter itens em pedidos abandonados.
     }
 
     const [paymentResult]: any = await conn.query(
-      'INSERT INTO payments (order_id, method, amount, status) VALUES (?, ?, ?, ?)',
-      [orderId, paymentMethod, total, 'pending']
+      'INSERT INTO payments (order_id, method, amount, status, expires_at) VALUES (?, ?, ?, ?, ?)',
+      [orderId, paymentMethod, total, 'pending', paymentMethod === 'cash' ? null : new Date(Date.now() + 30 * 60 * 1000)]
     );
     const paymentId = paymentResult.insertId;
 
     let checkoutUrl: string | null = null;
     if (paymentMethod !== 'cash') {
-      const frontendBaseUrl =
+      const backUrls = createCheckoutReturnUrls(
         process.env.FRONTEND_URL ||
         req.headers.origin ||
-        'http://localhost:3000';
-      const hasPublicFrontend = /^https?:\/\//i.test(frontendBaseUrl) && !/localhost|127\.0\.0\.1|0\.0\.0\.0|::1/i.test(frontendBaseUrl);
-      const backUrls = hasPublicFrontend
-        ? {
-            success: `${frontendBaseUrl}/cart/return?order_id=${orderId}`,
-            pending: `${frontendBaseUrl}/cart/return?order_id=${orderId}`,
-            failure: `${frontendBaseUrl}/cart/return?order_id=${orderId}`,
-          }
-        : undefined;
+        'http://localhost:3000',
+        `/payment/return?order_id=${orderId}&source=products`,
+      );
 
       const preference = await createCheckoutPreference({
         orderId,

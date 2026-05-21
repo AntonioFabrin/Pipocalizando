@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import pool from '../config/db';
 import { v4 as uuidv4 } from 'uuid';
-import { MercadoPagoApiError, createCheckoutPreference } from '../services/mercadoPagoService';
+import { MercadoPagoApiError, createCheckoutPreference, createCheckoutReturnUrls } from '../services/mercadoPagoService';
 import { cancelTicketOrder, cleanupExpiredTicketPayments } from '../services/ticketPaymentService';
 
 const SEAT_LABEL_RE = /^[A-H](10|[1-9])$/;
@@ -351,6 +351,12 @@ export const purchaseTickets = async (req: Request, res: Response): Promise<void
         name: customerRows[0].name,
       },
       expiresAt,
+      backUrls: createCheckoutReturnUrls(
+        process.env.FRONTEND_URL ||
+        req.headers.origin ||
+        'http://localhost:3000',
+        `/payment/return?order_id=${orderId}&source=tickets`,
+      ),
     });
 
     await pool.query(

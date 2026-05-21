@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Coffee, CupSoda, PackagePlus, Pencil, Plus, Popcorn, Search, ShoppingCart, Sparkles } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
@@ -55,7 +55,8 @@ const formatPrice = (price: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(price || 0));
 
 export default function Products() {
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
   const { addItem, getItemQuantity } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -103,6 +104,11 @@ export default function Products() {
   const isSeller = user?.role === 'admin' || user?.role === 'seller' || user?.role === 'super_admin';
 
   const handleAddToCart = (product: Product) => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+
     addItem(product, 1);
     setNotice(`${product.name} adicionado ao carrinho.`);
     window.setTimeout(() => setNotice(null), 2500);
@@ -292,7 +298,9 @@ export default function Products() {
                       onClick={() => handleAddToCart(product)}
                     >
                       <ShoppingCart className="h-4 w-4" />
-                      {getItemQuantity(product.id) > 0
+                      {!isAuthenticated
+                        ? 'Entrar para comprar'
+                        : getItemQuantity(product.id) > 0
                         ? `Adicionar mais (${getItemQuantity(product.id)})`
                         : 'Adicionar'}
                     </Button>
