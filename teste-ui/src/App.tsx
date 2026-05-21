@@ -11,7 +11,6 @@ import Catalog from './pages/Catalog';
 import MovieDetails from './pages/MovieDetails';
 import SeatSelection from './pages/SeatSelection';
 import Products from './pages/Products';
-import Pricing from './pages/Pricing';
 import About from './pages/About';
 import Login from './pages/Login';
 import CreateMovie from './pages/admin/CreateMovie';
@@ -30,7 +29,6 @@ function AnimatedRoutes() {
           <Route path="/movies/:id" element={<MovieDetails />} />
           <Route path="/seats" element={<SeatSelection />} />
           <Route path="/products" element={<Products />} />
-          <Route path="/pricing" element={<Pricing />} />
           <Route path="/about" element={<About />} />
           <Route path="/login" element={<Login />} />
           <Route path="/admin/movies/new" element={<CreateMovie />} />
