@@ -158,9 +158,11 @@ export default function Home() {
                 <Button size="lg" variant="primary" className="rounded-2xl">
                   Escolher Combo
                 </Button>
-                <Button size="lg" variant="ghost" className="text-cinema-red hover:text-white uppercase tracking-widest text-xs font-black italic">
-                  Ver Cardápio Completo
-                </Button>
+                <Link to="/products">
+                  <Button size="lg" variant="ghost" className="text-cinema-red hover:text-white uppercase tracking-widest text-xs font-black italic">
+                    Ver Cardápio Completo
+                  </Button>
+                </Link>
               </div>
             </div>
             

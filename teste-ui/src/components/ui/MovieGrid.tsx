@@ -24,8 +24,7 @@ export function MovieGrid({ movies, className, onMovieDeleted }: MovieGridProps)
     <motion.div
       variants={containerVariants}
       initial="hidden"
-      whileInView="visible"
-      viewport={{ once: true, margin: "-50px" }}
+      animate="visible"
       className={cn(
         // Grid Responsivo: 1 col no mobile, 2 no tablet, 4 no desktop
         "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 md:gap-10",

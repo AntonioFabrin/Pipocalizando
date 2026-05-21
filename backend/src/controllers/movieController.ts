@@ -1,6 +1,59 @@
 import { Request, Response } from 'express';
 import pool from '../config/db';
 
+const normalizeDateForSql = (value: any): string | null => {
+  if (!value) return null;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const clean = String(value).trim();
+  if (!clean) return null;
+
+  const isoMatch = clean.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+
+  const brMatch = clean.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+
+  return clean;
+};
+
+const syncPrimaryMovieSession = async (
+  movieId: number,
+  roomId: any,
+  sessionDate: any,
+  sessionTime: any,
+): Promise<void> => {
+  const normalizedDate = normalizeDateForSql(sessionDate);
+  const normalizedRoomId = Number(roomId);
+
+  if (!movieId || !Number.isInteger(normalizedRoomId) || !normalizedDate || !sessionTime) return;
+
+  const [existingRows]: any = await pool.query(
+    'SELECT id FROM movie_sessions WHERE movie_id = ? AND is_active = 1 ORDER BY id ASC LIMIT 1',
+    [movieId]
+  );
+
+  if (existingRows.length > 0) {
+    await pool.query(
+      'UPDATE movie_sessions SET room_id = ?, session_date = ?, session_time = ? WHERE id = ?',
+      [normalizedRoomId, normalizedDate, sessionTime, existingRows[0].id]
+    );
+    return;
+  }
+
+  await pool.query(
+    `INSERT INTO movie_sessions (movie_id, room_id, session_date, session_time, available_seats, language)
+     VALUES (?, ?, ?, ?, 100, 'dublado')`,
+    [movieId, normalizedRoomId, normalizedDate, sessionTime]
+  );
+};
+
 // ─── Categorias de filmes ────────────────────────────────────────────────────
 
 export const getCategories = async (_req: Request, res: Response): Promise<void> => {
@@ -138,7 +191,7 @@ export const createSession = async (req: Request, res: Response): Promise<void> 
     }
     const [result]: any = await pool.query(
       'INSERT INTO movie_sessions (movie_id, room_id, session_date, session_time, available_seats, language) VALUES (?, ?, ?, ?, ?, ?)',
-      [movie_id, room_id, session_date, session_time, available_seats || 100, language || 'dublado']
+      [movie_id, room_id, normalizeDateForSql(session_date), session_time, available_seats || 100, language || 'dublado']
     );
     res.status(201).json({ message: 'Sessão criada!', id: result.insertId });
   } catch (err: any) {
@@ -152,7 +205,7 @@ export const updateSession = async (req: Request, res: Response): Promise<void> 
     const { movie_id, room_id, session_date, session_time, available_seats, language, is_active } = req.body;
     const [result]: any = await pool.query(
       'UPDATE movie_sessions SET movie_id=?, room_id=?, session_date=?, session_time=?, available_seats=?, language=?, is_active=? WHERE id=?',
-      [movie_id, room_id, session_date, session_time, available_seats || 100, language || 'dublado', is_active ?? 1, req.params.id]
+      [movie_id, room_id, normalizeDateForSql(session_date), session_time, available_seats || 100, language || 'dublado', is_active ?? 1, req.params.id]
     );
     if (result.affectedRows === 0) { res.status(404).json({ message: 'Sessão não encontrada.' }); return; }
     res.json({ message: 'Sessão atualizada!' });
@@ -263,16 +316,17 @@ export const create = async (req: Request, res: Response): Promise<void> => {
         rating           || null,
         poster_url       || null,
         trailer_url      || null,
-        session_date     || null,
+        normalizeDateForSql(session_date),
         session_time     || null,
         room             || null,
         room_id          || null,
         price            ?? 0,
-        premiere_date    || null,
-        on_display_until || null,
+        normalizeDateForSql(premiere_date),
+        normalizeDateForSql(on_display_until),
         status           || 'coming_soon',
       ]
     );
+    await syncPrimaryMovieSession(result.insertId, room_id, session_date, session_time);
     res.status(201).json({ message: 'Filme criado!', id: result.insertId });
   } catch (err: any) {
     console.error('❌ [movies.create]', err?.message || err);
@@ -309,19 +363,20 @@ export const update = async (req: Request, res: Response): Promise<void> => {
         rating           || null,
         poster_url       || null,
         trailer_url      || null,
-        session_date     || null,
+        normalizeDateForSql(session_date),
         session_time     || null,
         room             || null,
         room_id          || null,
         price            ?? 0,
-        premiere_date    || null,
-        on_display_until || null,
+        normalizeDateForSql(premiere_date),
+        normalizeDateForSql(on_display_until),
         status           || 'now_playing',
         is_active        ?? 1,
         req.params.id,
       ]
     );
     if (result.affectedRows === 0) { res.status(404).json({ message: 'Filme não encontrado.' }); return; }
+    await syncPrimaryMovieSession(Number(req.params.id), room_id, session_date, session_time);
     res.json({ message: 'Filme atualizado!' });
   } catch (err: any) {
     console.error('❌ [movies.update]', err?.message || err);
