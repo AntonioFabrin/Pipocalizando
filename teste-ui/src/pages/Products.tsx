@@ -8,6 +8,7 @@ import { Spinner } from '../components/ui/Spinner';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
+import { useCart } from '../contexts/CartContext';
 
 interface Product {
   id: number;
@@ -55,11 +56,13 @@ const formatPrice = (price: number) =>
 
 export default function Products() {
   const { user } = useAuth();
+  const { addItem, getItemQuantity } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchProducts() {
@@ -98,6 +101,12 @@ export default function Products() {
 
   const featuredProduct = products.find((product) => normalizeCategory(product.category_name).includes('combo')) || products[0];
   const isSeller = user?.role === 'admin' || user?.role === 'seller' || user?.role === 'super_admin';
+
+  const handleAddToCart = (product: Product) => {
+    addItem(product, 1);
+    setNotice(`${product.name} adicionado ao carrinho.`);
+    window.setTimeout(() => setNotice(null), 2500);
+  };
 
   return (
     <motion.div
@@ -194,6 +203,15 @@ export default function Products() {
         </div>
       </section>
 
+      {notice && (
+        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-100">
+          {notice}
+          <Link to="/cart" className="ml-2 font-black uppercase tracking-widest text-white hover:text-cinema-red">
+            Ver carrinho
+          </Link>
+        </div>
+      )}
+
       {isLoading && <Spinner message="Carregando produtos..." />}
       {error && <ErrorMessage message={error} onRetry={() => window.location.reload()} />}
 
@@ -268,9 +286,15 @@ export default function Products() {
                         </Button>
                       </Link>
                     )}
-                    <Button className="w-full rounded-xl" disabled={isOutOfStock}>
+                    <Button
+                      className="w-full rounded-xl"
+                      disabled={isOutOfStock}
+                      onClick={() => handleAddToCart(product)}
+                    >
                       <ShoppingCart className="h-4 w-4" />
-                      Adicionar
+                      {getItemQuantity(product.id) > 0
+                        ? `Adicionar mais (${getItemQuantity(product.id)})`
+                        : 'Adicionar'}
                     </Button>
                   </div>
                 </div>

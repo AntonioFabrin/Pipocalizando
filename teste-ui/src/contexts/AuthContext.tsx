@@ -30,6 +30,11 @@ interface AuthContextData {
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
+function normalizeRole(role?: string) {
+  if (!role) return role;
+  return role === 'admin' ? 'super_admin' : role;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -42,7 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (storedToken && storedUser) {
       setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      const parsedUser = JSON.parse(storedUser);
+      setUser({
+        ...parsedUser,
+        role: normalizeRole(parsedUser.role),
+      });
     }
 
     setIsLoading(false);
@@ -55,10 +64,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     localStorage.setItem('token', response.token);
-    localStorage.setItem('user', JSON.stringify(response.user));
+    const normalizedUser = {
+      ...response.user,
+      role: normalizeRole(response.user.role),
+    };
+    localStorage.setItem('user', JSON.stringify(normalizedUser));
 
     setToken(response.token);
-    setUser(response.user);
+    setUser(normalizedUser);
   }
 
   async function register(name: string, email: string, password: string) {
@@ -69,15 +82,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     localStorage.setItem('token', response.token);
-    localStorage.setItem('user', JSON.stringify(response.user));
+    const normalizedUser = {
+      ...response.user,
+      role: normalizeRole(response.user.role),
+    };
+    localStorage.setItem('user', JSON.stringify(normalizedUser));
 
     setToken(response.token);
-    setUser(response.user);
+    setUser(normalizedUser);
   }
 
   function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('pipocalizando_cart');
     setToken(null);
     setUser(null);
     window.location.href = '/login';

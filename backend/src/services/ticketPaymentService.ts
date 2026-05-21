@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import pool from '../config/db';
 
 const isMissingMercadoPagoColumns = (err: any): boolean =>
@@ -38,6 +39,11 @@ export const cleanupExpiredTicketPayments = async (conn: any = pool): Promise<vo
 };
 
 export const finalizeTicketOrder = async (conn: any, orderId: number): Promise<void> => {
+  const [existingTickets]: any = await conn.query(
+    'SELECT id, ticket_code FROM tickets WHERE order_id = ? FOR UPDATE',
+    [orderId]
+  );
+
   const [ticketRows]: any = await conn.query(
     `SELECT session_id, COUNT(*) AS total
      FROM tickets
@@ -58,6 +64,14 @@ export const finalizeTicketOrder = async (conn: any, orderId: number): Promise<v
     if (seatUpdate.affectedRows === 0) {
       throw new Error('Nao ha assentos disponiveis suficientes para confirmar este pedido.');
     }
+  }
+
+  if (existingTickets.length === 0) {
+    const ticketCode = `POP-${uuidv4().split('-')[0].toUpperCase()}`;
+    await conn.query(
+      'INSERT INTO tickets (order_id, ticket_code) VALUES (?, ?)',
+      [orderId, ticketCode]
+    );
   }
 
   await conn.query(

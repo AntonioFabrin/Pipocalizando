@@ -8,10 +8,15 @@
 
 const bcrypt = require('bcryptjs');
 const mysql  = require('mysql2/promise');
-require('dotenv').config({ path: require('path').join(__dirname, '../backend/.env') });
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../backend/.env') });
 
-const EMAIL = 'admin@pipocalizando.com';
-const SENHA = 'admin123'; // Troque para a senha que quiser
+const args = process.argv.slice(2);
+const emailArg = args.find((arg) => arg.startsWith('--email='));
+const passwordArg = args.find((arg) => arg.startsWith('--password='));
+
+const EMAIL = process.env.ADMIN_EMAIL || (emailArg ? emailArg.split('=')[1] : 'admin@pipocalizando.com');
+const SENHA = process.env.ADMIN_PASSWORD || (passwordArg ? passwordArg.split('=')[1] : 'admin123');
 
 async function main() {
   const pool = await mysql.createPool({

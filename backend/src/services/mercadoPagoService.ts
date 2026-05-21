@@ -14,6 +14,11 @@ type PixPaymentInput = {
 
 type PreferenceInput = PixPaymentInput & {
   seats: string[];
+  backUrls?: {
+    success: string;
+    pending?: string;
+    failure?: string;
+  };
 };
 
 type MercadoPagoPayment = {
@@ -132,7 +137,7 @@ export const createCheckoutPreference = async (input: PreferenceInput): Promise<
       {
         id: String(input.orderId),
         title: input.description,
-        description: `Assentos: ${input.seats.join(', ')}`,
+        description: input.seats.length > 0 ? `Assentos: ${input.seats.join(', ')}` : input.description,
         quantity: 1,
         currency_id: 'BRL',
         unit_price: Number(input.amount.toFixed(2)),
@@ -154,6 +159,11 @@ export const createCheckoutPreference = async (input: PreferenceInput): Promise<
       local_payment_id: input.paymentId,
     },
   };
+
+  if (input.backUrls) {
+    body.back_urls = input.backUrls;
+    body.auto_return = 'approved';
+  }
 
   if (notificationUrl) {
     body.notification_url = notificationUrl;

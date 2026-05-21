@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import pool from '../config/db';
-import { v4 as uuidv4 } from 'uuid';
+import { createCheckoutPreference } from '../services/mercadoPagoService';
+import { isSellerLikeRole, normalizeRole } from '../utils/roles';
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
 const PAYMENT_METHODS = ['cash', 'credit_card', 'debit_card', 'pix'];
@@ -35,7 +36,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 
     const { items, notes, payment_method, session_id } = req.body;
     const customerId = (req as any).user.id;
-    const sellerId = (req as any).user.role === 'seller' ? customerId : null;
+    const sellerId = isSellerLikeRole((req as any).user.role) ? customerId : null;
     const paymentMethod = payment_method || 'cash';
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -97,6 +98,16 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
       total += item.unit_price * item.quantity;
     }
 
+    const [customerRows]: any = await conn.query(
+      'SELECT id, name, email FROM users WHERE id = ?',
+      [customerId]
+    );
+    if (customerRows.length === 0) {
+      await conn.rollback();
+      res.status(404).json({ message: 'Cliente nao encontrado.' });
+      return;
+    }
+
     const [orderResult]: any = await conn.query(
       'INSERT INTO orders (customer_id, seller_id, session_id, total, notes, status) VALUES (?, ?, ?, ?, ?, ?)',
       [customerId, sellerId, sessionId, total, notes || null, 'pending']
@@ -120,24 +131,62 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
       }
     }
 
-    await conn.query(
+    const [paymentResult]: any = await conn.query(
       'INSERT INTO payments (order_id, method, amount, status) VALUES (?, ?, ?, ?)',
       [orderId, paymentMethod, total, 'pending']
     );
+    const paymentId = paymentResult.insertId;
 
-    const ticketCode = `POP-${uuidv4().split('-')[0].toUpperCase()}`;
-    await conn.query(
-      'INSERT INTO tickets (order_id, ticket_code) VALUES (?, ?)',
-      [orderId, ticketCode]
-    );
+    let checkoutUrl: string | null = null;
+    if (paymentMethod !== 'cash') {
+      const frontendBaseUrl =
+        process.env.FRONTEND_URL ||
+        req.headers.origin ||
+        'http://localhost:3000';
+      const hasPublicFrontend = /^https?:\/\//i.test(frontendBaseUrl) && !/localhost|127\.0\.0\.1|0\.0\.0\.0|::1/i.test(frontendBaseUrl);
+      const backUrls = hasPublicFrontend
+        ? {
+            success: `${frontendBaseUrl}/cart/return?order_id=${orderId}`,
+            pending: `${frontendBaseUrl}/cart/return?order_id=${orderId}`,
+            failure: `${frontendBaseUrl}/cart/return?order_id=${orderId}`,
+          }
+        : undefined;
+
+      const preference = await createCheckoutPreference({
+        orderId,
+        paymentId,
+        amount: total,
+        description: `Pedido #${orderId} - Bomboniere`,
+        seats: [],
+        payer: {
+          email: customerRows[0].email,
+          name: customerRows[0].name,
+        },
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        ...(backUrls ? { backUrls } : {}),
+      });
+
+      checkoutUrl = preference.init_point || null;
+      await conn.query(
+        `UPDATE payments
+         SET provider = 'mercado_pago',
+             provider_payment_id = ?,
+             external_reference = ?,
+             checkout_url = ?,
+             status_detail = 'checkout_preference_created'
+         WHERE id = ?`,
+        [String(preference.id), `ticket_order_${orderId}`, checkoutUrl, paymentId]
+      );
+    }
 
     await conn.commit();
     res.status(201).json({
       message: 'Pedido criado!',
       order_id: orderId,
-      ticket_code: ticketCode,
       total,
       payment_method: paymentMethod,
+      checkout_url: checkoutUrl,
+      payment_status: 'pending',
     });
   } catch (error: any) {
     await conn.rollback();
@@ -154,6 +203,7 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
     let query = `
       SELECT o.*,
              tk.ticket_code,
+             tk.ticket_issued_at,
              u.name           AS customer_name,
              p.status         AS payment_status,
              p.method         AS payment_method,
@@ -164,7 +214,9 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
              mv.room          AS room
       FROM orders o
       LEFT JOIN (
-        SELECT order_id, GROUP_CONCAT(ticket_code ORDER BY id SEPARATOR ', ') AS ticket_code
+        SELECT order_id,
+               GROUP_CONCAT(ticket_code ORDER BY id SEPARATOR ', ') AS ticket_code,
+               MIN(issued_at) AS ticket_issued_at
         FROM tickets
         GROUP BY order_id
       ) tk ON tk.order_id = o.id
@@ -177,7 +229,7 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
     if (user.role === 'customer') {
       query += ' WHERE o.customer_id = ?';
       params.push(user.id);
-    } else if (user.role === 'seller') {
+    } else if (isSellerLikeRole(normalizeRole(user.role))) {
       query += ' WHERE o.seller_id = ?';
       params.push(user.id);
     }

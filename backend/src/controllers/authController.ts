@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db';
 import crypto from 'crypto';
+import { normalizeRole } from '../utils/roles';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -63,14 +64,15 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       res.status(401).json({ message: 'Credenciais inválidas.' });
       return;
     }
+    const role = normalizeRole(user.role);
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
     res.json({
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone }
+      user: { id: user.id, name: user.name, email: user.email, role, phone: user.phone }
     });
   } catch (error: any) {
     console.error('❌ [login]', error?.message || error);
