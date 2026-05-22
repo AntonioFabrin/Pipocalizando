@@ -9,6 +9,7 @@ import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
+import { hasRole, STAFF_ROLES } from '../lib/roles';
 
 interface Product {
   id: number;
@@ -101,7 +102,7 @@ export default function Products() {
   }, [activeCategory, products, search]);
 
   const featuredProduct = products.find((product) => normalizeCategory(product.category_name).includes('combo')) || products[0];
-  const isSeller = user?.role === 'admin' || user?.role === 'seller' || user?.role === 'super_admin';
+  const isSeller = hasRole(user?.role, STAFF_ROLES);
 
   const handleAddToCart = (product: Product) => {
     if (!isAuthenticated) {

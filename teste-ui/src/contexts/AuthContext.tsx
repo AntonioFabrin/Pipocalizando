@@ -10,12 +10,13 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import api, { clearSession, getStoredUser, storeSession } from '../services/api';
+import { normalizeRole, type Role } from '../lib/roles';
 
 interface User {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: Role;
 }
 
 interface AuthContextData {
@@ -29,11 +30,6 @@ interface AuthContextData {
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
-
-function normalizeRole(role?: string) {
-  if (!role) return role;
-  return role === 'admin' ? 'super_admin' : role;
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);

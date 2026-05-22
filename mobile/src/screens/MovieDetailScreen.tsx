@@ -71,7 +71,7 @@ const detailStyles = StyleSheet.create({
 // ─── Tela ─────────────────────────────────────────────────────────────────────
 export default function MovieDetailScreen({ route, navigation }: any) {
   const { movieId } = route.params as { movieId: number };
-  const { isSeller } = useAuth();
+  const { canManageCatalog } = useAuth();
   const [movie,   setMovie]   = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -336,10 +336,10 @@ export default function MovieDetailScreen({ route, navigation }: any) {
           </View>
 
           {/* ── Painel vendedor ── */}
-          {isSeller && (
+          {canManageCatalog && (
             <TouchableOpacity
               style={styles.sellerBtn}
-              onPress={() => navigation.navigate('Main', { screen: 'Painel', params: { openMovieEdit: movie.id } })}
+              onPress={() => navigation.navigate('CreateMovie', { movie })}
               activeOpacity={0.8}
             >
               <Text style={styles.sellerBtnText}>✏️ Editar este filme</Text>

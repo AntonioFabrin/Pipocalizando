@@ -13,6 +13,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../services/api';
 import { UploadCloud, Film, Calendar, DollarSign, ArrowLeft, Loader2, UserRound } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { hasRole, STAFF_ROLES } from '../../lib/roles';
 
 export default function CreateMovie() {
   const { user } = useAuth();
@@ -94,7 +95,7 @@ export default function CreateMovie() {
     }
   }, [isEditMode, id]);
 
-  const hasAccess = user && (user.role === 'admin' || user.role === 'seller' || user.role === 'super_admin');
+  const hasAccess = hasRole(user?.role, STAFF_ROLES);
   if (!hasAccess) {
     return (
       <div className="min-h-[80vh] flex flex-col items-center justify-center text-center px-6">

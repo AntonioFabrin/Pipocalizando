@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import pool from '../config/db';
 import { getPayment, getPixData } from '../services/mercadoPagoService';
 import { cancelTicketOrder, finalizeTicketOrder } from '../services/ticketPaymentService';
+import { canRejectPendingPayment } from '../utils/flowRules';
 
 const WEBHOOK_SECRET_HEADER = 'x-webhook-secret';
 
@@ -184,7 +185,7 @@ export const reject = async (req: Request, res: Response): Promise<void> => {
       res.status(404).json({ message: 'Pagamento nao encontrado.' });
       return;
     }
-    if (paymentRows[0].status !== 'pending') {
+    if (!canRejectPendingPayment(paymentRows[0].status)) {
       await conn.rollback();
       res.status(409).json({ message: 'Somente pagamentos pendentes podem ser rejeitados.' });
       return;

@@ -17,6 +17,7 @@ import { useMovies } from '../hooks/useMovies';
 import { useAuth } from '../contexts/AuthContext';
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { hasRole, STAFF_ROLES } from '../lib/roles';
 
 const ALL_CATEGORIES = 'all';
 const FALLBACK_CATEGORIES = ['Ação', 'Ficção', 'Animação', 'Terror', 'Suspense', 'Drama'];
@@ -45,7 +46,7 @@ export default function Catalog() {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORIES);
 
-  const isSeller = user?.role === 'admin' || user?.role === 'seller' || user?.role === 'super_admin';
+  const isSeller = hasRole(user?.role, STAFF_ROLES);
 
   const categories = useMemo(() => {
     const names = movies

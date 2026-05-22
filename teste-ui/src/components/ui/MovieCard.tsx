@@ -6,6 +6,7 @@ import { Button } from './Button';
 import { useAuth } from '../../contexts/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import { hasRole, STAFF_ROLES } from '../../lib/roles';
 
 interface MovieCardProps {
   key?: React.Key;
@@ -29,7 +30,7 @@ export function MovieCard({ movie, className, onDeleted }: MovieCardProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [isDeleting, setIsDeleting] = useState(false);
-  const isSeller = user?.role === 'admin' || user?.role === 'seller' || user?.role === 'super_admin';
+  const isSeller = hasRole(user?.role, STAFF_ROLES);
   const moviePath = `/movies/${movie.id}`;
 
   const handleDelete = async () => {

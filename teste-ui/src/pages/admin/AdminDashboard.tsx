@@ -22,6 +22,8 @@ import { Button } from '../../components/ui/Button';
 import { Spinner } from '../../components/ui/Spinner';
 import { ErrorMessage } from '../../components/ui/ErrorMessage';
 import { cn } from '@/src/lib/utils';
+import { hasRole, ADMIN_ROLES, type Role } from '../../lib/roles';
+import UserManagementPanel, { type AdminUser as ManagedAdminUser } from './UserManagementPanel';
 
 type AdminTab = 'overview' | 'orders' | 'products' | 'movies' | 'team' | 'sales';
 type SalesPeriod = 7 | 30 | 90;
@@ -31,6 +33,7 @@ interface AdminOrder {
   customer_name?: string | null;
   ticket_code?: string | null;
   ticket_issued_at?: string | null;
+  payment_id?: number | null;
   total: number;
   status: string;
   payment_status?: string | null;
@@ -63,7 +66,7 @@ interface AdminUser {
   id: number;
   name: string;
   email: string;
-  role: string;
+  role: Role;
   created_at?: string;
 }
 
@@ -119,9 +122,6 @@ interface SalesReportResponse {
   top_products: TopProduct[];
 }
 
-const STAFF_ROLES = ['super_admin', 'manager'];
-const TEAM_ROLES = ['manager', 'seller'];
-
 const STATUS_LABELS: Record<string, { label: string; tone: string }> = {
   pending: { label: 'Pending', tone: 'text-cinema-gold bg-cinema-gold/10 border-cinema-gold/30' },
   confirmed: { label: 'Confirmed', tone: 'text-sky-300 bg-sky-500/10 border-sky-500/30' },
@@ -133,7 +133,7 @@ const STATUS_LABELS: Record<string, { label: string; tone: string }> = {
   rejected: { label: 'Rejected', tone: 'text-red-300 bg-red-500/10 border-red-500/30' },
 };
 
-const ROLE_LABELS: Record<string, string> = {
+const ROLE_LABELS: Record<Role, string> = {
   super_admin: 'Super Admin',
   manager: 'Manager',
   seller: 'Seller',
@@ -345,9 +345,11 @@ export default function AdminDashboard({ initialTab = 'overview' }: { initialTab
   const [isSalesLoading, setIsSalesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [salesError, setSalesError] = useState<string | null>(null);
+  const [paymentActionId, setPaymentActionId] = useState<number | null>(null);
 
-  const canAccess = !!user && STAFF_ROLES.includes(user.role);
+  const canAccess = hasRole(user?.role, ADMIN_ROLES);
   const isSuperAdmin = user?.role === 'super_admin';
+  const canAccessTeam = hasRole(user?.role, ADMIN_ROLES);
 
   useEffect(() => {
     if (!canAccess) {
@@ -366,7 +368,7 @@ export default function AdminDashboard({ initialTab = 'overview' }: { initialTab
           api.get<AdminOrder[]>('/orders'),
           api.get<AdminProduct[]>('/products'),
           api.get<AdminMovie[]>('/movies'),
-          api.get<AdminUser[]>('/users'),
+          canAccessTeam ? api.get<AdminUser[]>('/users') : Promise.resolve([] as AdminUser[]),
         ]);
 
         if (!mounted) return;
@@ -388,7 +390,7 @@ export default function AdminDashboard({ initialTab = 'overview' }: { initialTab
     return () => {
       mounted = false;
     };
-  }, [canAccess]);
+  }, [canAccess, canAccessTeam]);
 
   useEffect(() => {
     if (!canAccess || !isSuperAdmin) {
@@ -426,30 +428,34 @@ export default function AdminDashboard({ initialTab = 'overview' }: { initialTab
     }
   }, [activeTab, isSuperAdmin]);
 
+  useEffect(() => {
+    if (activeTab === 'team' && !canAccessTeam) {
+      setActiveTab('overview');
+    }
+  }, [activeTab, canAccessTeam]);
+
   const summary = useMemo(() => {
     const approvedTotal = orders
       .filter((order) => order.payment_status === 'approved')
       .reduce((acc, order) => acc + Number(order.total || 0), 0);
-    const teamMembers = users.filter((member) => TEAM_ROLES.includes(member.role));
-
     return {
       orders: orders.length,
       pendingOrders: orders.filter((order) => order.status === 'pending').length,
       approvedOrders: orders.filter((order) => order.payment_status === 'approved').length,
       products: products.length,
       movies: movies.length,
-      team: teamMembers.length,
+      team: canAccessTeam ? users.length : 0,
       revenue: approvedTotal,
       lowStock: products.filter((product) => Number(product.stock || 0) > 0 && Number(product.stock || 0) <= 10).length,
     };
-  }, [orders, products, users, movies]);
+  }, [orders, products, users, movies, canAccessTeam]);
 
   const tabs: Array<{ key: AdminTab; label: string; icon: any }> = [
     { key: 'overview', label: 'Overview', icon: LayoutDashboard },
     { key: 'orders', label: 'Orders', icon: Ticket },
     { key: 'products', label: 'Products', icon: Package },
     { key: 'movies', label: 'Movies', icon: Film },
-    { key: 'team', label: 'Team', icon: Users },
+    ...(canAccessTeam ? [{ key: 'team' as const, label: 'Team', icon: Users }] : []),
     ...(isSuperAdmin ? [{ key: 'sales' as const, label: 'Sales', icon: BarChart3 }] : []),
   ];
 
@@ -461,11 +467,22 @@ export default function AdminDashboard({ initialTab = 'overview' }: { initialTab
 
   const recentMovies = [...movies].slice(0, 6);
   const recentProducts = [...products].slice(0, 6);
-  const recentUsers = [...users].filter((member) => TEAM_ROLES.includes(member.role)).slice(0, 6);
   const salesSummary = salesReport?.summary;
   const salesRows = salesReport?.sales || [];
   const dailySales = salesReport?.daily_sales || [];
   const topProducts = salesReport?.top_products || [];
+
+  const handlePaymentAction = async (paymentId: number, action: 'approve' | 'reject') => {
+    try {
+      setPaymentActionId(paymentId);
+      await api.patch(`/payments/${paymentId}/${action}`);
+      window.location.reload();
+    } catch (err: any) {
+      setError(err?.message || 'Nao foi possivel atualizar o pagamento.');
+    } finally {
+      setPaymentActionId(null);
+    }
+  };
 
   if (!canAccess) {
     return (
@@ -536,7 +553,7 @@ export default function AdminDashboard({ initialTab = 'overview' }: { initialTab
                 Manage the show from one place
               </h1>
               <p className="max-w-2xl text-sm leading-relaxed text-white/55 md:text-base">
-                A centralized operational view for orders, products, movies and team members.
+                A centralized operational view for orders, products, movies and user access.
                 This is the base screen we can now expand with the exact workflows you want next.
               </p>
             </div>
@@ -567,7 +584,7 @@ export default function AdminDashboard({ initialTab = 'overview' }: { initialTab
       </section>
 
       <section className="mt-8 grid gap-4 md:grid-cols-4">
-        <StatCard icon={Users} label="Team" value={summary.team} hint="Accessible user list" />
+            {canAccessTeam && <StatCard icon={Users} label="Users" value={summary.team} hint="Accessible accounts" />}
         <StatCard icon={Activity} label="Live orders" value={summary.pendingOrders} hint="Waiting to move forward" />
         <StatCard icon={ShoppingBag} label="Low stock" value={summary.lowStock} hint="Needs attention" />
         <StatCard icon={RefreshCw} label="Quick refresh" value="On demand" hint="Reload the panel when needed" />
@@ -690,16 +707,20 @@ export default function AdminDashboard({ initialTab = 'overview' }: { initialTab
                         </div>
                       </Link>
                     )}
-                    <button
-                      onClick={() => setActiveTab('team')}
-                      className="group flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-left transition-colors hover:border-cinema-red/40 hover:bg-cinema-red/5"
-                    >
-                      <div>
-                        <p className="font-display text-xl font-black uppercase italic tracking-tight">Review team</p>
-                        <p className="mt-1 text-xs text-white/45">See only managers and sellers.</p>
-                      </div>
-                      <ArrowRight className="h-5 w-5 text-cinema-red transition-transform group-hover:translate-x-1" />
-                    </button>
+                    {canAccessTeam && (
+                      <button
+                        onClick={() => setActiveTab('team')}
+                        className="group flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-left transition-colors hover:border-cinema-red/40 hover:bg-cinema-red/5"
+                      >
+                        <div>
+                          <p className="font-display text-xl font-black uppercase italic tracking-tight">Review users</p>
+                          <p className="mt-1 text-xs text-white/45">
+                            Create, edit and remove user accounts according to your role.
+                          </p>
+                        </div>
+                        <ArrowRight className="h-5 w-5 text-cinema-red transition-transform group-hover:translate-x-1" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -725,7 +746,13 @@ export default function AdminDashboard({ initialTab = 'overview' }: { initialTab
           )}
 
           {activeTab === 'orders' && (
-            <div className="grid gap-4">
+            <div className="space-y-4">
+              <SectionTitle
+                eyebrow="Orders"
+                title="Payment control"
+                description="Aprovar confirma o pedido e dispara a baixa de estoque; rejeitar cancela o pagamento pendente e libera o fluxo."
+              />
+              <div className="grid gap-4">
               {recentOrders.map((order) => {
                 const status = STATUS_LABELS[order.status] || { label: order.status, tone: 'text-white/60 bg-white/5 border-white/10' };
                 return (
@@ -744,10 +771,30 @@ export default function AdminDashboard({ initialTab = 'overview' }: { initialTab
                         {status.label}
                       </span>
                       <p className="font-display text-3xl font-black text-cinema-gold">{formatCurrency(order.total)}</p>
+                      {order.payment_status === 'pending' && order.payment_id ? (
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handlePaymentAction(order.payment_id!, 'approve')}
+                            disabled={paymentActionId === order.payment_id}
+                          >
+                            Aprovar pagamento
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="glass"
+                            onClick={() => handlePaymentAction(order.payment_id!, 'reject')}
+                            disabled={paymentActionId === order.payment_id}
+                          >
+                            Rejeitar
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 );
               })}
+              </div>
             </div>
           )}
 
@@ -833,32 +880,14 @@ export default function AdminDashboard({ initialTab = 'overview' }: { initialTab
             </div>
           )}
 
-          {activeTab === 'team' && (
-            <div className="space-y-4">
-              <SectionTitle
-                eyebrow="Team"
-                title="Seller and manager accounts"
-                description="Only operational team members are shown here. Customer accounts stay out of this view."
-              />
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {recentUsers.map((teamMember) => (
-                <div key={teamMember.id} className="glass-card p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-display text-2xl font-black uppercase italic tracking-tight">{teamMember.name}</p>
-                      <p className="mt-1 text-sm text-white/50">{teamMember.email}</p>
-                    </div>
-                    <span className="rounded-full border border-cinema-red/30 bg-cinema-red/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-cinema-red">
-                      {ROLE_LABELS[teamMember.role] || teamMember.role}
-                    </span>
-                  </div>
-                  <p className="mt-4 text-xs uppercase tracking-[0.25em] text-white/35">
-                    Joined {formatDateTime(teamMember.created_at)}
-                  </p>
-                </div>
-              ))}
-              </div>
-            </div>
+          {activeTab === 'team' && canAccessTeam && (
+            <UserManagementPanel
+              users={users as ManagedAdminUser[]}
+              onUsersChanged={async () => {
+                const refreshedUsers = await api.get<AdminUser[]>('/users');
+                setUsers(refreshedUsers);
+              }}
+            />
           )}
 
           {activeTab === 'sales' && isSuperAdmin && (

@@ -251,7 +251,7 @@ function MovieCard({
 }
 
 export default function MoviesScreen({ navigation }: any) {
-  const { isSeller } = useAuth();
+  const { canManageCatalog } = useAuth();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -466,7 +466,7 @@ export default function MoviesScreen({ navigation }: any) {
           <Text style={styles.headerTitle}>🎬 Sessões</Text>
           <Text style={styles.headerSub}>Escolha seu filme</Text>
         </View>
-        {isSeller && (
+        {canManageCatalog && (
           <TouchableOpacity style={styles.addButton} onPress={openCreate}>
             <Text style={styles.addButtonText}>+ Novo Filme</Text>
           </TouchableOpacity>
@@ -518,7 +518,7 @@ export default function MoviesScreen({ navigation }: any) {
             <Text style={styles.emptyText}>
               {tab === 'now' ? 'Nenhum filme em cartaz.' : 'Nenhuma estreia em breve.'}
             </Text>
-            {isSeller && <Text style={styles.emptyHint}>Toque em "+ Novo Filme" para adicionar.</Text>}
+            {canManageCatalog && <Text style={styles.emptyHint}>Toque em "+ Novo Filme" para adicionar.</Text>}
           </View>
         }
         renderItem={({ item }) => {
@@ -534,7 +534,7 @@ export default function MoviesScreen({ navigation }: any) {
               leftDays={leftDays}
               untilDays={untilDays}
               isUrgent={isUrgent}
-              isSeller={isSeller}
+              isSeller={canManageCatalog}
               formatDate={formatDate}
               formatTime={formatTime}
               onPress={() => navigation.navigate('MovieDetail', { movieId: item.id })}

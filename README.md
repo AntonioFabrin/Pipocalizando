@@ -1,56 +1,115 @@
-# Pipocalizando 🍿
+# Pipocalizando
 
-Sistema de vendas para cinema com ticket digital.
+Sistema de cinema e bomboniere com:
 
-## Tecnologias
-- **Backend:** Node.js + TypeScript + Express + MySQL
-- **Mobile:** React Native + Expo + TypeScript
+- compra de ingressos com escolha de assento
+- reserva temporaria de assentos
+- fluxo de pagamento com aprovacao/cancelamento no backend
+- carrinho de produtos da bomboniere com baixa de estoque
+- painel administrativo para operacao e gestao
+- app mobile com experiencias separadas por perfil
 
-## Estrutura
-```
-Pipocalizando/
-├── backend/     → API REST
-├── mobile/      → App React Native
-└── database/    → Schema MySQL
-```
+## O que o projeto faz
+
+O Pipocalizando junta tres camadas:
+
+- `backend`: API em Node.js + TypeScript + Express + MySQL
+- `teste-ui`: interface web em React + Vite
+- `mobile`: aplicativo em React Native + Expo
+
+O objetivo e simular a jornada completa de um cinema:
+
+- cliente se cadastra e faz login
+- escolhe uma sessao e reserva assentos por 20 minutos
+- conclui o pagamento e recebe o ticket
+- compra produtos da bomboniere
+- equipe acompanha pedidos, pagamentos e estoque no painel
+
+## Features principais
+
+- login e cadastro de cliente
+- reserva temporaria de assentos
+- compra de ingressos com confirmacao automatica apos aprovacao do pagamento
+- cancelamento de pedido com reversao do fluxo no backend
+- baixa de estoque em compras confirmadas
+- cadastro e edicao de produtos
+- painel administrativo com pedidos, produtos, filmes e usuarios
+- separacao de perfis entre `super_admin`, `manager`, `seller` e `customer`
 
 ## Como rodar
 
-### Backend
+### 1. Banco de dados
+
+Importe o schema principal:
+
+```bash
+mysql -u root -p < database/schema.sql
+```
+
+Se quiser aplicar as melhorias de ingressos e assentos em um banco existente:
+
+```bash
+mysql -u root -p < database/migration_tickets_seats.sql
+mysql -u root -p < database/migration_seat_reservations.sql
+mysql -u root -p < database/migration_mercado_pago_payments.sql
+```
+
+### 2. Backend
+
 ```bash
 cd backend
 npm install
-cp .env.example .env  # configure sua senha do MySQL
-npx tsc
-node dist/server.js
+cp .env.example .env
+npm run build
+npm start
 ```
 
-### Mobile
+Para rodar os testes basicos:
+
+```bash
+npm test
+```
+
+### 3. Web
+
+```bash
+cd teste-ui
+npm install
+npm run dev
+```
+
+### 4. Mobile
+
 ```bash
 cd mobile
 npm install
 npx expo start
 ```
 
-### Banco de dados
-```bash
-mysql -u root -p < database/schema.sql
+## Estrutura
+
+```text
+Pipocalizando/
+├── backend/   API REST e regras de negocio
+├── teste-ui/  Web app para clientes e admin
+├── mobile/    App mobile com fluxo por perfil
+└── database/  Scripts SQL e seeds
 ```
 
-Se o banco ja existir e voce estiver apenas atualizando os ingressos com assentos:
-```bash
-mysql -u root -p < database/migration_tickets_seats.sql
-```
+## Perfis
 
-Para ativar reservas temporarias de assentos por 20 minutos em bancos existentes:
-```bash
-mysql -u root -p < database/migration_seat_reservations.sql
-```
+| Role | Uso |
+|------|-----|
+| `super_admin` | Dono do sistema, acesso total |
+| `manager` | Operacao e gestao do cinema |
+| `seller` | Atendimento e fluxo operacional |
+| `customer` | Compra de ingressos e produtos |
 
-## Roles
-| Role | Descrição |
-|------|-----------|
-| super_admin | Dono do sistema |
-| manager | Gerente de cinema |
-| seller | Vendedor do balcão |
-| customer | Cliente |
+## Demo
+
+Se o banco estiver com os seeds da demo, o projeto costuma usar:
+
+- e-mail: `admin@pipocalizando.com`
+- senha: `admin123`
+
+Consulte `database/criar_admin.js` se precisar recriar o usuario administrativo.

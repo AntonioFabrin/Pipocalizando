@@ -257,6 +257,10 @@ export default function Cart() {
                 placeholder="Ex.: sem manteiga, retirar gelo, mesa 12..."
                 className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none focus:border-cinema-red/50"
               />
+              <p className="text-xs leading-relaxed text-white/45">
+                Pagamentos aprovados confirmam o pedido no backend e atualizam o estoque automaticamente. Se o
+                pagamento for cancelado, o pedido nao segue para retirada.
+              </p>
             </div>
 
             <div className="space-y-3 text-sm text-white/60">

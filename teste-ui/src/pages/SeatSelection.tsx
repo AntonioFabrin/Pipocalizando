@@ -378,7 +378,8 @@ export default function SeatSelection() {
                 </div>
               ) : (
                 <p className="text-xs text-white/45 leading-relaxed">
-                  Ao escolher um assento, ele fica reservado para voce por 20 minutos enquanto finaliza a compra.
+                  Ao escolher um assento, ele fica reservado por 20 minutos enquanto voce finaliza o pagamento. Depois
+                  da aprovacao, o backend confirma o pedido e libera o ticket.
                 </p>
               )}
 

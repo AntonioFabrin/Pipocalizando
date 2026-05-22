@@ -3,22 +3,9 @@ import pool from '../config/db';
 import { v4 as uuidv4 } from 'uuid';
 import { MercadoPagoApiError, createCheckoutPreference, createCheckoutReturnUrls } from '../services/mercadoPagoService';
 import { cancelTicketOrder, cleanupExpiredTicketPayments } from '../services/ticketPaymentService';
-
-const SEAT_LABEL_RE = /^[A-H](10|[1-9])$/;
+import { normalizeSeatList } from '../utils/flowRules';
 const RESERVATION_MINUTES = 20;
 const PIX_EXPIRATION_MINUTES = 30;
-
-const normalizeSeatList = (seats: unknown): string[] | null => {
-  if (!Array.isArray(seats) || seats.length === 0) return null;
-
-  const normalizedSeats = seats.map((seat: unknown) => String(seat).trim().toUpperCase());
-  const uniqueSeats = [...new Set(normalizedSeats)];
-
-  if (uniqueSeats.length !== normalizedSeats.length) return null;
-  if (uniqueSeats.some((seat) => !SEAT_LABEL_RE.test(seat))) return null;
-
-  return uniqueSeats;
-};
 
 const deleteExpiredReservations = async (conn: any): Promise<void> => {
   await conn.query('DELETE FROM seat_reservations WHERE expires_at <= NOW()');
@@ -461,5 +448,81 @@ export const getOccupiedSeats = async (req: Request, res: Response): Promise<voi
   } catch (err: any) {
     console.error('[getOccupiedSeats]', err?.message || err);
     res.status(500).json({ message: 'Erro interno', detail: err?.message });
+  }
+};
+
+export const getMyTickets = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req as any).user.id;
+
+    const [rows]: any = await pool.query(
+      `
+      SELECT t.id             AS ticket_id,
+             t.ticket_code    AS ticket_code,
+             t.seat_label     AS seat_label,
+             t.is_used        AS is_used,
+             t.used_at        AS used_at,
+             t.issued_at      AS ticket_issued_at,
+             o.id             AS order_id,
+             o.total          AS order_total,
+             o.status         AS order_status,
+             o.created_at     AS order_created_at,
+             u.name           AS customer_name,
+             u.email          AS customer_email,
+             p.status         AS payment_status,
+             p.method         AS payment_method,
+             p.paid_at        AS paid_at,
+             ms.session_date  AS session_date,
+             ms.session_time  AS session_time,
+             ms.available_seats AS available_seats,
+             mv.title         AS movie_title,
+             mv.genre         AS movie_genre,
+             mv.poster_url    AS poster_url,
+             mv.price         AS movie_price,
+             mv.room          AS room_name
+      FROM tickets t
+      JOIN orders o ON o.id = t.order_id
+      JOIN users u ON u.id = o.customer_id
+      LEFT JOIN payments p ON p.order_id = o.id
+      LEFT JOIN movie_sessions ms ON ms.id = t.session_id
+      LEFT JOIN movies mv ON mv.id = t.movie_id
+      WHERE o.customer_id = ?
+      ORDER BY COALESCE(p.paid_at, o.created_at, t.issued_at) DESC, t.id DESC
+      `,
+      [userId]
+    );
+
+    const groupedTickets = rows.map((row: any) => ({
+      ticket_id: Number(row.ticket_id),
+      ticket_code: row.ticket_code,
+      seat_label: row.seat_label,
+      is_used: Boolean(row.is_used),
+      used_at: row.used_at,
+      ticket_issued_at: row.ticket_issued_at,
+      order_id: Number(row.order_id),
+      order_total: Number(row.order_total || 0),
+      order_status: row.order_status,
+      order_created_at: row.order_created_at,
+      customer_name: row.customer_name,
+      customer_email: row.customer_email,
+      payment_status: row.payment_status,
+      payment_method: row.payment_method,
+      paid_at: row.paid_at,
+      session_date: row.session_date,
+      session_time: row.session_time,
+      room_name: row.room_name,
+      movie: {
+        title: row.movie_title,
+        genre: row.movie_genre,
+        poster_url: row.poster_url,
+        price: Number(row.movie_price || 0),
+      },
+      seats: row.seat_label ? [row.seat_label] : [],
+    }));
+
+    res.json(groupedTickets);
+  } catch (error: any) {
+    console.error('[getMyTickets]', error?.message || error);
+    res.status(500).json({ message: 'Erro interno', detail: error?.message });
   }
 };

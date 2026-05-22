@@ -33,7 +33,7 @@ type TabType = 'orders' | 'products' | 'movies';
 const EMPTY_PRODUCT = { name: '', price: '', stock: '', description: '', image_url: '', category_name: '' };
 
 export default function AdminScreen({ navigation }: any) {
-  const { user, logout } = useAuth();
+  const { user, logout, isSuperAdmin } = useAuth();
   const [tab, setTab] = useState<TabType>('orders');
   const [orders, setOrders] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -192,6 +192,13 @@ export default function AdminScreen({ navigation }: any) {
     { key: 'products', label: 'Produtos', emoji: '🍿' },
     { key: 'movies',   label: 'Filmes',   emoji: '🎬' },
   ];
+  const visibleTabs = isSuperAdmin ? TABS : TABS.filter(tab => tab.key !== 'products');
+
+  useEffect(() => {
+    if (!isSuperAdmin && tab === 'products') {
+      setTab('orders');
+    }
+  }, [isSuperAdmin, tab]);
 
   return (
     <View style={styles.container}>
@@ -220,7 +227,7 @@ export default function AdminScreen({ navigation }: any) {
 
         {/* Tabs */}
         <View style={styles.tabRow}>
-          {TABS.map(t => (
+          {visibleTabs.map(t => (
             <TouchableOpacity key={t.key} style={[styles.tabBtn, tab === t.key && styles.tabBtnActive]} onPress={() => setTab(t.key)}>
               <Text style={styles.tabEmoji}>{t.emoji}</Text>
               <Text style={[styles.tabLabel, tab === t.key && styles.tabLabelActive]}>{t.label}</Text>
@@ -258,7 +265,7 @@ export default function AdminScreen({ navigation }: any) {
           )}
 
           {/* ── Tab: Produtos ── */}
-          {tab === 'products' && (
+          {tab === 'products' && isSuperAdmin && (
             <>
               <TouchableOpacity style={styles.newItemBtn} onPress={openCreateProduct}>
                 <Text style={styles.newItemBtnText}>+ Novo produto</Text>

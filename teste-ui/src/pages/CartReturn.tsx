@@ -61,13 +61,13 @@ export default function CartReturn() {
 
         if (payment.status === 'approved' || currentOrder?.payment_status === 'approved') {
           setIsApproved(true);
-          setMessage('Pagamento aprovado. Ticket liberado.');
+          setMessage('Pagamento aprovado. O pedido foi confirmado e o ticket foi liberado.');
           clearCart();
           window.localStorage.removeItem('pending_order_id');
           return;
         }
 
-        setMessage('Pagamento ainda em processamento. Aguarde alguns instantes.');
+        setMessage('Pagamento ainda em processamento. Quando o status virar approved, o backend confirma o pedido e libera o ticket automaticamente.');
       } catch (error: any) {
         if (!mounted) return;
         setMessage(error?.message || 'Nao foi possivel verificar o pagamento.');
@@ -105,6 +105,13 @@ export default function CartReturn() {
         </div>
 
         <p className="text-sm text-white/55">{message}</p>
+
+        {!isApproved && (
+          <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+            Enquanto o pagamento nao e confirmado, o pedido continua pendente. Depois da aprovacao, o sistema confirma
+            a compra, libera o ticket e ajusta o estoque no backend.
+          </div>
+        )}
 
         {order && (
           <div className="grid gap-4 md:grid-cols-3">
@@ -144,6 +151,12 @@ export default function CartReturn() {
             <Button>
               {source === 'tickets' ? <Film className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
               {source === 'tickets' ? 'Voltar as sessoes' : 'Voltar aos produtos'}
+            </Button>
+          </Link>
+          <Link to="/my-tickets">
+            <Button variant="glass">
+              <Ticket className="h-4 w-4" />
+              Ver meus ingressos
             </Button>
           </Link>
           {!isApproved && (

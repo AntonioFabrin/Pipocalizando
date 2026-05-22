@@ -5,6 +5,7 @@ import { ArrowLeft, DollarSign, ImagePlus, Loader2, Package, PackageCheck, Uploa
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../services/api';
 import { Button } from '../../components/ui/Button';
+import { hasRole, STAFF_ROLES } from '../../lib/roles';
 
 interface Category {
   id: number;
@@ -31,7 +32,7 @@ export default function CreateProduct() {
   const [isLoading, setIsLoading] = useState(isEditMode);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const hasAccess = user && (user.role === 'admin' || user.role === 'seller' || user.role === 'super_admin');
+  const hasAccess = hasRole(user?.role, STAFF_ROLES);
 
   useEffect(() => {
     async function fetchCategories() {

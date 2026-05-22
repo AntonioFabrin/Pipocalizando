@@ -15,11 +15,13 @@ import SeatSelection from './pages/SeatSelection';
 import Products from './pages/Products';
 import Cart from './pages/Cart';
 import CartReturn from './pages/CartReturn';
+import MyTickets from './pages/MyTickets';
 import About from './pages/About';
 import Login from './pages/Login';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import CreateMovie from './pages/admin/CreateMovie';
 import CreateProduct from './pages/admin/CreateProduct';
+import { ADMIN_ROLES, STAFF_ROLES, SUPER_ADMIN_ROLES } from './lib/roles';
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -37,14 +39,15 @@ function AnimatedRoutes() {
           <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
           <Route path="/cart/return" element={<RequireAuth><CartReturn /></RequireAuth>} />
           <Route path="/payment/return" element={<RequireAuth><CartReturn /></RequireAuth>} />
+          <Route path="/my-tickets" element={<RequireAuth><MyTickets /></RequireAuth>} />
           <Route path="/about" element={<About />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/sales" element={<RequireAuth><AdminDashboard initialTab="sales" /></RequireAuth>} />
-          <Route path="/admin/movies/new" element={<CreateMovie />} />
-          <Route path="/admin/movies/edit/:id" element={<CreateMovie />} />
-          <Route path="/admin/products/new" element={<CreateProduct />} />
-          <Route path="/admin/products/edit/:id" element={<CreateProduct />} />
+          <Route path="/admin" element={<RequireAuth allowedRoles={ADMIN_ROLES}><AdminDashboard /></RequireAuth>} />
+          <Route path="/admin/sales" element={<RequireAuth allowedRoles={SUPER_ADMIN_ROLES}><AdminDashboard initialTab="sales" /></RequireAuth>} />
+          <Route path="/admin/movies/new" element={<RequireAuth allowedRoles={STAFF_ROLES}><CreateMovie /></RequireAuth>} />
+          <Route path="/admin/movies/edit/:id" element={<RequireAuth allowedRoles={STAFF_ROLES}><CreateMovie /></RequireAuth>} />
+          <Route path="/admin/products/new" element={<RequireAuth allowedRoles={STAFF_ROLES}><CreateProduct /></RequireAuth>} />
+          <Route path="/admin/products/edit/:id" element={<RequireAuth allowedRoles={STAFF_ROLES}><CreateProduct /></RequireAuth>} />
         </Routes>
       </div>
     </AnimatePresence>

@@ -209,6 +209,7 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
              tk.ticket_code,
              tk.ticket_issued_at,
              u.name           AS customer_name,
+             p.id             AS payment_id,
              p.status         AS payment_status,
              p.method         AS payment_method,
              ms.id            AS session_id,
