@@ -76,6 +76,7 @@ router.delete('/movie-sessions/:id', authMiddleware, roleMiddleware(...STAFF), m
 // ── PEDIDOS ──────────────────────────────────────────────
 router.post ('/orders',            authMiddleware, orders.createOrder);
 router.get  ('/orders',            authMiddleware, orders.getOrders);
+router.get  ('/reports/sales',     authMiddleware, roleMiddleware('super_admin'), orders.getSalesReport);
 router.patch('/orders/:id/status', authMiddleware, roleMiddleware(...STAFF), orders.updateOrderStatus);
 
 // ── TICKETS ──────────────────────────────────────────────

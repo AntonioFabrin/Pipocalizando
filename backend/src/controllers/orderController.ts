@@ -330,3 +330,198 @@ export const validateTicket = async (req: Request, res: Response): Promise<void>
     conn.release();
   }
 };
+
+export const getSalesReport = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = (req as any).user;
+    if (normalizeRole(user?.role) !== 'super_admin') {
+      res.status(403).json({ message: 'Acesso restrito ao super_admin.' });
+      return;
+    }
+
+    const requestedDays = Number(req.query.days || 30);
+    const periodDays = Number.isFinite(requestedDays) ? Math.min(Math.max(Math.trunc(requestedDays), 7), 90) : 30;
+
+    const [salesRows]: any = await pool.query(
+      `
+      SELECT o.id            AS order_id,
+             o.total         AS total,
+             o.status        AS order_status,
+             o.created_at    AS created_at,
+             p.status        AS payment_status,
+             p.method        AS payment_method,
+             p.paid_at       AS paid_at,
+             u.id            AS customer_id,
+             u.name          AS customer_name,
+             u.email         AS customer_email,
+             tk.ticket_code  AS ticket_code,
+             tk.ticket_issued_at AS ticket_issued_at
+      FROM orders o
+      JOIN payments p ON p.order_id = o.id AND p.status = 'approved'
+      JOIN users u ON u.id = o.customer_id
+      LEFT JOIN (
+        SELECT order_id,
+               GROUP_CONCAT(ticket_code ORDER BY id SEPARATOR ', ') AS ticket_code,
+               MIN(issued_at) AS ticket_issued_at
+        FROM tickets
+        GROUP BY order_id
+      ) tk ON tk.order_id = o.id
+      WHERE COALESCE(p.paid_at, o.created_at) >= DATE_SUB(NOW(), INTERVAL ? DAY)
+      ORDER BY COALESCE(p.paid_at, o.created_at) DESC, o.id DESC
+      `,
+      [periodDays]
+    );
+
+    const orderIds = salesRows.map((sale: any) => Number(sale.order_id));
+    const itemsByOrder = new Map<number, Array<{
+      product_id: number;
+      product_name: string;
+      quantity: number;
+      unit_price: number;
+      line_total: number;
+    }>>();
+
+    if (orderIds.length > 0) {
+      const placeholders = orderIds.map(() => '?').join(', ');
+      const [itemRows]: any = await pool.query(
+        `
+        SELECT oi.order_id,
+               oi.product_id,
+               oi.quantity,
+               oi.unit_price,
+               p.name AS product_name
+        FROM order_items oi
+        JOIN products p ON p.id = oi.product_id
+        WHERE oi.order_id IN (${placeholders})
+        ORDER BY oi.order_id DESC, oi.id ASC
+        `,
+        orderIds
+      );
+
+      for (const item of itemRows) {
+        const orderId = Number(item.order_id);
+        if (!itemsByOrder.has(orderId)) {
+          itemsByOrder.set(orderId, []);
+        }
+
+        itemsByOrder.get(orderId)!.push({
+          product_id: Number(item.product_id),
+          product_name: item.product_name,
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unit_price),
+          line_total: Number(item.quantity) * Number(item.unit_price),
+        });
+      }
+    }
+
+    const enrichedSales = salesRows.map((sale: any) => {
+      const orderId = Number(sale.order_id);
+      const items = itemsByOrder.get(orderId) || [];
+      return {
+        ...sale,
+        order_id: orderId,
+        total: Number(sale.total),
+        items,
+        items_summary: items.length > 0
+          ? items.map((item) => `${item.product_name} x${item.quantity}`).join(' • ')
+          : '-',
+      };
+    });
+
+    const [chartRows]: any = await pool.query(
+      `
+      SELECT DATE(COALESCE(p.paid_at, o.created_at)) AS sale_day,
+             COUNT(*) AS sales_count,
+             COALESCE(SUM(o.total), 0) AS revenue
+      FROM orders o
+      JOIN payments p ON p.order_id = o.id AND p.status = 'approved'
+      WHERE COALESCE(p.paid_at, o.created_at) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      GROUP BY DATE(COALESCE(p.paid_at, o.created_at))
+      ORDER BY sale_day ASC
+      `,
+      [periodDays]
+    );
+
+    const [topProductsRows]: any = await pool.query(
+      `
+      SELECT p.id AS product_id,
+             p.name AS product_name,
+             SUM(oi.quantity) AS quantity_sold,
+             SUM(oi.quantity * oi.unit_price) AS revenue
+      FROM orders o
+      JOIN payments pay ON pay.order_id = o.id AND pay.status = 'approved'
+      JOIN order_items oi ON oi.order_id = o.id
+      JOIN products p ON p.id = oi.product_id
+      WHERE COALESCE(pay.paid_at, o.created_at) >= DATE_SUB(NOW(), INTERVAL ? DAY)
+      GROUP BY p.id, p.name
+      ORDER BY quantity_sold DESC, revenue DESC
+      LIMIT 8
+      `,
+      [periodDays]
+    );
+
+    const toLocalDateKey = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const dailySalesMap = new Map<string, { date: string; sales_count: number; revenue: number }>();
+    for (const row of chartRows) {
+      const key = String(row.sale_day).slice(0, 10);
+      dailySalesMap.set(key, {
+        date: key,
+        sales_count: Number(row.sales_count || 0),
+        revenue: Number(row.revenue || 0),
+      });
+    }
+
+    const dailySales: Array<{ date: string; sales_count: number; revenue: number }> = [];
+    for (let i = periodDays - 1; i >= 0; i -= 1) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const key = toLocalDateKey(date);
+      dailySales.push(
+        dailySalesMap.get(key) || {
+          date: key,
+          sales_count: 0,
+          revenue: 0,
+        }
+      );
+    }
+
+    const totalRevenue = enrichedSales.reduce(
+      (acc: number, sale: { total: number }) => acc + Number(sale.total || 0),
+      0
+    );
+    const totalItemsSold = enrichedSales.reduce(
+      (acc: number, sale: { items: Array<{ quantity: number }> }) =>
+        acc + sale.items.reduce((sum: number, item: { quantity: number }) => sum + Number(item.quantity || 0), 0),
+      0
+    );
+    const uniqueCustomers = new Set(enrichedSales.map((sale: any) => sale.customer_id)).size;
+
+    res.json({
+      period_days: periodDays,
+      summary: {
+        total_sales: enrichedSales.length,
+        total_revenue: totalRevenue,
+        total_items_sold: totalItemsSold,
+        unique_customers: uniqueCustomers,
+        average_ticket: enrichedSales.length > 0 ? totalRevenue / enrichedSales.length : 0,
+      },
+      sales: enrichedSales,
+      daily_sales: dailySales,
+      top_products: topProductsRows.map((row: any) => ({
+        product_id: row.product_id,
+        product_name: row.product_name,
+        quantity_sold: Number(row.quantity_sold || 0),
+        revenue: Number(row.revenue || 0),
+      })),
+    });
+  } catch (error: any) {
+    console.error('[getSalesReport]', error?.message || error);
+    res.status(500).json({ message: 'Erro interno', detail: error?.message });
+  }
+};

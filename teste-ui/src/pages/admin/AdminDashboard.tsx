@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BadgeCheck,
   BarChart3,
+  CalendarClock,
   Film,
   LayoutDashboard,
   Package,
@@ -22,7 +23,8 @@ import { Spinner } from '../../components/ui/Spinner';
 import { ErrorMessage } from '../../components/ui/ErrorMessage';
 import { cn } from '@/src/lib/utils';
 
-type AdminTab = 'overview' | 'orders' | 'products' | 'movies' | 'team';
+type AdminTab = 'overview' | 'orders' | 'products' | 'movies' | 'team' | 'sales';
+type SalesPeriod = 7 | 30 | 90;
 
 interface AdminOrder {
   id: number;
@@ -65,6 +67,58 @@ interface AdminUser {
   created_at?: string;
 }
 
+interface SalesItem {
+  product_id: number;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+}
+
+interface SalesRecord {
+  order_id: number;
+  total: number;
+  order_status: string;
+  payment_status: string;
+  payment_method: string;
+  customer_id: number;
+  customer_name: string;
+  customer_email: string;
+  created_at: string;
+  paid_at?: string | null;
+  ticket_code?: string | null;
+  ticket_issued_at?: string | null;
+  items: SalesItem[];
+  items_summary: string;
+}
+
+interface DailySale {
+  date: string;
+  sales_count: number;
+  revenue: number;
+}
+
+interface TopProduct {
+  product_id: number;
+  product_name: string;
+  quantity_sold: number;
+  revenue: number;
+}
+
+interface SalesReportResponse {
+  period_days: number;
+  summary: {
+    total_sales: number;
+    total_revenue: number;
+    total_items_sold: number;
+    unique_customers: number;
+    average_ticket: number;
+  };
+  sales: SalesRecord[];
+  daily_sales: DailySale[];
+  top_products: TopProduct[];
+}
+
 const STAFF_ROLES = ['super_admin', 'manager'];
 const TEAM_ROLES = ['manager', 'seller'];
 
@@ -85,6 +139,12 @@ const ROLE_LABELS: Record<string, string> = {
   seller: 'Seller',
   customer: 'Customer',
 };
+
+const PERIOD_OPTIONS: Array<{ label: string; value: SalesPeriod }> = [
+  { label: '7 dias', value: 7 },
+  { label: '30 dias', value: 30 },
+  { label: '90 dias', value: 90 },
+];
 
 const formatCurrency = (value?: number | string | null) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
@@ -138,18 +198,156 @@ function SectionTitle({ eyebrow, title, description }: { eyebrow: string; title:
   );
 }
 
-export default function AdminDashboard() {
+function formatDayLabel(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(date);
+}
+
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: any;
+  label: string;
+  value: string | number;
+  hint?: string;
+}) {
+  return (
+    <div className="glass-card border-white/10 bg-white/[0.03] p-5 shadow-[0_20px_80px_rgba(0,0,0,0.2)]">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-white/35">{label}</p>
+          <p className="mt-2 font-display text-3xl font-black uppercase italic tracking-tight">{value}</p>
+          {hint && <p className="mt-2 text-xs text-white/45">{hint}</p>}
+        </div>
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cinema-red/20 bg-cinema-red/10 text-cinema-red">
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SalesChart({ data }: { data: DailySale[] }) {
+  const maxRevenue = Math.max(...data.map((item) => item.revenue), 1);
+  const maxCount = Math.max(...data.map((item) => item.sales_count), 1);
+  const chartHeight = 280;
+  const chartWidth = 1000;
+  const paddingX = 36;
+  const paddingTop = 24;
+  const paddingBottom = 48;
+  const usableHeight = chartHeight - paddingTop - paddingBottom;
+  const stepX = (chartWidth - paddingX * 2) / Math.max(data.length, 1);
+  const barWidth = Math.max(stepX - 10, 10);
+
+  return (
+    <div className="rounded-[2rem] border border-white/10 bg-black/25 p-5">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.35em] text-cinema-red">Sales graph</p>
+          <h3 className="mt-2 font-display text-2xl font-black uppercase italic tracking-tighter">Revenue by day</h3>
+        </div>
+        <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-white/45">
+          <span className="rounded-full border border-cinema-red/30 bg-cinema-red/10 px-3 py-1 text-cinema-red">
+            Revenue bars
+          </span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Daily sales count</span>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+          className="h-[280px] min-w-[720px] w-full"
+          role="img"
+          aria-label="Sales chart"
+        >
+          <defs>
+            <linearGradient id="salesBarGradient" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#e50914" stopOpacity="0.95" />
+              <stop offset="100%" stopColor="#e50914" stopOpacity="0.25" />
+            </linearGradient>
+          </defs>
+          <line
+            x1={paddingX}
+            y1={chartHeight - paddingBottom}
+            x2={chartWidth - paddingX}
+            y2={chartHeight - paddingBottom}
+            stroke="rgba(255,255,255,0.14)"
+            strokeWidth="2"
+          />
+
+          {data.map((day, index) => {
+            const barHeight = usableHeight * (day.revenue / maxRevenue);
+            const countHeight = usableHeight * (day.sales_count / maxCount);
+            const x = paddingX + index * stepX + 5;
+            const y = chartHeight - paddingBottom - barHeight;
+            const countY = chartHeight - paddingBottom - countHeight;
+            const showLabel = index % Math.max(1, Math.floor(data.length / 8)) === 0 || index === data.length - 1;
+
+            return (
+              <g key={day.date}>
+                <rect x={x} y={y} width={barWidth} height={barHeight} rx="14" fill="url(#salesBarGradient)" />
+                <rect
+                  x={x + barWidth * 0.32}
+                  y={countY}
+                  width={Math.max(barWidth * 0.36, 4)}
+                  height={Math.max(countHeight, 2)}
+                  rx="999"
+                  fill="rgba(255,255,255,0.45)"
+                />
+                <circle cx={x + barWidth / 2} cy={y - 8} r="3" fill="#ffffff" opacity="0.85" />
+                <text
+                  x={x + barWidth / 2}
+                  y={y - 18}
+                  textAnchor="middle"
+                  fill="rgba(255,255,255,0.75)"
+                  fontSize="12"
+                  fontWeight="700"
+                >
+                  {formatCurrency(day.revenue)}
+                </text>
+                {showLabel && (
+                  <text
+                    x={x + barWidth / 2}
+                    y={chartHeight - 18}
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.45)"
+                    fontSize="12"
+                    fontWeight="700"
+                  >
+                    {formatDayLabel(day.date)}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+export default function AdminDashboard({ initialTab = 'overview' }: { initialTab?: AdminTab } = {}) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [movies, setMovies] = useState<AdminMovie[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [salesReport, setSalesReport] = useState<SalesReportResponse | null>(null);
+  const [salesPeriod, setSalesPeriod] = useState<SalesPeriod>(30);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSalesLoading, setIsSalesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [salesError, setSalesError] = useState<string | null>(null);
 
   const canAccess = !!user && STAFF_ROLES.includes(user.role);
+  const isSuperAdmin = user?.role === 'super_admin';
 
   useEffect(() => {
     if (!canAccess) {
@@ -192,6 +390,42 @@ export default function AdminDashboard() {
     };
   }, [canAccess]);
 
+  useEffect(() => {
+    if (!canAccess || !isSuperAdmin) {
+      setIsSalesLoading(false);
+      return;
+    }
+
+    let mounted = true;
+
+    async function fetchSalesReport() {
+      try {
+        setIsSalesLoading(true);
+        setSalesError(null);
+        const data = await api.get<SalesReportResponse>(`/reports/sales?days=${salesPeriod}`);
+        if (!mounted) return;
+        setSalesReport(data);
+      } catch (err: any) {
+        if (!mounted) return;
+        setSalesError(err?.message || 'Erro ao carregar o relatorio de vendas.');
+      } finally {
+        if (mounted) setIsSalesLoading(false);
+      }
+    }
+
+    fetchSalesReport();
+
+    return () => {
+      mounted = false;
+    };
+  }, [canAccess, isSuperAdmin, salesPeriod]);
+
+  useEffect(() => {
+    if (activeTab === 'sales' && !isSuperAdmin) {
+      setActiveTab('overview');
+    }
+  }, [activeTab, isSuperAdmin]);
+
   const summary = useMemo(() => {
     const approvedTotal = orders
       .filter((order) => order.payment_status === 'approved')
@@ -216,6 +450,7 @@ export default function AdminDashboard() {
     { key: 'products', label: 'Products', icon: Package },
     { key: 'movies', label: 'Movies', icon: Film },
     { key: 'team', label: 'Team', icon: Users },
+    ...(isSuperAdmin ? [{ key: 'sales' as const, label: 'Sales', icon: BarChart3 }] : []),
   ];
 
   const recentOrders = [...orders].sort((a, b) => {
@@ -227,6 +462,10 @@ export default function AdminDashboard() {
   const recentMovies = [...movies].slice(0, 6);
   const recentProducts = [...products].slice(0, 6);
   const recentUsers = [...users].filter((member) => TEAM_ROLES.includes(member.role)).slice(0, 6);
+  const salesSummary = salesReport?.summary;
+  const salesRows = salesReport?.sales || [];
+  const dailySales = salesReport?.daily_sales || [];
+  const topProducts = salesReport?.top_products || [];
 
   if (!canAccess) {
     return (
@@ -440,6 +679,17 @@ export default function AdminDashboard() {
                         <ArrowRight className="h-5 w-5 text-cinema-red transition-transform group-hover:translate-x-1" />
                       </div>
                     </Link>
+                    {user?.role === 'super_admin' && (
+                      <Link to="/admin/sales">
+                        <div className="group flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 transition-colors hover:border-cinema-red/40 hover:bg-cinema-red/5">
+                          <div>
+                            <p className="font-display text-xl font-black uppercase italic tracking-tight">Sales report</p>
+                            <p className="mt-1 text-xs text-white/45">See purchases, buyers and sales graph.</p>
+                          </div>
+                          <ArrowRight className="h-5 w-5 text-cinema-red transition-transform group-hover:translate-x-1" />
+                        </div>
+                      </Link>
+                    )}
                     <button
                       onClick={() => setActiveTab('team')}
                       className="group flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-left transition-colors hover:border-cinema-red/40 hover:bg-cinema-red/5"
@@ -608,6 +858,196 @@ export default function AdminDashboard() {
                 </div>
               ))}
               </div>
+            </div>
+          )}
+
+          {activeTab === 'sales' && isSuperAdmin && (
+            <div className="space-y-6">
+              {isSalesLoading ? (
+                <div className="rounded-[2rem] border border-white/10 bg-black/20 p-10">
+                  <Spinner message="Loading sales data..." />
+                </div>
+              ) : salesError ? (
+                <ErrorMessage message={salesError} onRetry={() => window.location.reload()} />
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <SectionTitle
+                      eyebrow="Sales"
+                      title="Revenue and purchases"
+                      description="One view for what was sold, who bought it, when it happened and how the revenue behaved."
+                    />
+                    <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-2">
+                      {PERIOD_OPTIONS.map((option) => {
+                        const active = salesPeriod === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            onClick={() => setSalesPeriod(option.value)}
+                            className={cn(
+                              'rounded-xl px-4 py-2 text-xs font-black uppercase tracking-[0.25em] transition-colors',
+                              active
+                                ? 'bg-cinema-red text-white shadow-[0_0_20px_rgba(229,9,20,0.25)]'
+                                : 'text-white/45 hover:bg-white/5 hover:text-white'
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <MetricCard icon={BarChart3} label="Sales" value={salesSummary?.total_sales ?? 0} hint={`Period: ${salesReport?.period_days || salesPeriod} days`} />
+                    <MetricCard icon={ShoppingBag} label="Revenue" value={formatCurrency(salesSummary?.total_revenue)} hint="Approved payments only" />
+                    <MetricCard icon={Package} label="Items sold" value={salesSummary?.total_items_sold ?? 0} hint="All product lines" />
+                    <MetricCard icon={Users} label="Customers" value={salesSummary?.unique_customers ?? 0} hint={`Ticket avg: ${formatCurrency(salesSummary?.average_ticket)}`} />
+                  </div>
+
+                  <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+                    <SalesChart data={dailySales} />
+
+                    <div className="space-y-6">
+                      <div className="glass-card p-6">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.35em] text-cinema-red">Top products</p>
+                            <h3 className="mt-2 font-display text-2xl font-black uppercase italic tracking-tighter">Best sellers</h3>
+                          </div>
+                          <Package className="h-5 w-5 text-cinema-red" />
+                        </div>
+
+                        <div className="mt-6 space-y-3">
+                          {topProducts.length > 0 ? (
+                            topProducts.map((product, index) => (
+                              <div key={product.product_id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-display text-xl font-black uppercase italic tracking-tight">
+                                      #{index + 1} {product.product_name}
+                                    </p>
+                                    <p className="mt-1 text-xs text-white/45">{product.quantity_sold} unidades vendidas</p>
+                                  </div>
+                                  <p className="font-display text-lg font-black text-cinema-gold">{formatCurrency(product.revenue)}</p>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="rounded-2xl border border-white/10 bg-black/20 p-8 text-center text-sm text-white/45">
+                              No product sales yet.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="glass-card p-6">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.35em] text-cinema-red">Sales window</p>
+                            <h3 className="mt-2 font-display text-2xl font-black uppercase italic tracking-tighter">Latest movement</h3>
+                          </div>
+                          <CalendarClock className="h-5 w-5 text-cinema-red" />
+                        </div>
+                        <div className="mt-6 space-y-3">
+                          {dailySales.slice(-5).map((day) => (
+                            <div key={day.date} className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                              <div>
+                                <p className="text-sm font-black uppercase tracking-[0.25em] text-white/70">{formatDayLabel(day.date)}</p>
+                                <p className="mt-1 text-xs text-white/40">{day.sales_count} sales</p>
+                              </div>
+                              <p className="font-display text-xl font-black text-cinema-gold">{formatCurrency(day.revenue)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-4">
+                    <div className="flex items-end justify-between gap-4">
+                      <div>
+                        <p className="text-[11px] font-black uppercase tracking-[0.35em] text-cinema-red">Sales log</p>
+                        <h2 className="mt-2 font-display text-3xl md:text-4xl font-black uppercase italic tracking-tighter">
+                          What was sold
+                        </h2>
+                      </div>
+                      <p className="hidden text-sm text-white/45 md:block">
+                        Each card shows the buyer, the items included and the exact sale timestamp.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4">
+                      {salesRows.length > 0 ? (
+                        salesRows.map((sale) => (
+                          <article key={sale.order_id} className="glass-card overflow-hidden p-5">
+                            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                              <div className="space-y-3">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <p className="font-display text-2xl font-black uppercase italic tracking-tight">
+                                    Sale #{sale.order_id}
+                                  </p>
+                                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-300">
+                                    {sale.payment_status}
+                                  </span>
+                                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-white/55">
+                                    {sale.payment_method}
+                                  </span>
+                                </div>
+
+                                <p className="text-sm text-white/50">
+                                  {sale.customer_name} • {sale.customer_email}
+                                </p>
+                                <p className="text-xs text-white/40">
+                                  Purchased at {formatDateTime(sale.paid_at || sale.created_at)}
+                                </p>
+                                {sale.ticket_code && (
+                                  <p className="text-xs text-white/40">
+                                    Ticket: {sale.ticket_code}
+                                    {sale.ticket_issued_at ? ` • issued ${formatDateTime(sale.ticket_issued_at)}` : ''}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="flex flex-col items-start gap-2 xl:items-end">
+                                <p className="font-display text-3xl font-black text-cinema-gold">{formatCurrency(sale.total)}</p>
+                                <p className="text-xs uppercase tracking-[0.25em] text-white/40">{sale.order_status}</p>
+                              </div>
+                            </div>
+
+                            <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                              <p className="text-[10px] font-black uppercase tracking-[0.35em] text-white/35">Items sold</p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {sale.items.length > 0 ? (
+                                  sale.items.map((item) => (
+                                    <span
+                                      key={`${sale.order_id}-${item.product_id}`}
+                                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/70"
+                                    >
+                                      {item.product_name} x{item.quantity}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-sm text-white/45">No item details found.</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-white/40">
+                              <span>{sale.items_summary}</span>
+                              <span>{formatDateTime(sale.created_at)}</span>
+                            </div>
+                          </article>
+                        ))
+                      ) : (
+                        <div className="rounded-[2rem] border border-white/10 bg-black/20 p-10 text-center text-sm text-white/45">
+                          No approved sales found for this period.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
