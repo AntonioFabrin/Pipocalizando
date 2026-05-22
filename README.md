@@ -7,15 +7,14 @@ Sistema de cinema e bomboniere com:
 - fluxo de pagamento com aprovacao/cancelamento no backend
 - carrinho de produtos da bomboniere com baixa de estoque
 - painel administrativo para operacao e gestao
-- app mobile com experiencias separadas por perfil
+- frontend web oficial com experiencias separadas por perfil
 
 ## O que o projeto faz
 
 O Pipocalizando junta tres camadas:
 
 - `backend`: API em Node.js + TypeScript + Express + MySQL
-- `teste-ui`: interface web em React + Vite
-- `mobile`: aplicativo em React Native + Expo
+- `frontend`: interface web oficial em React + Vite
 
 O objetivo e simular a jornada completa de um cinema:
 
@@ -70,30 +69,21 @@ Para rodar os testes basicos:
 npm test
 ```
 
-### 3. Web
+### 3. Frontend
 
 ```bash
-cd teste-ui
+cd frontend
 npm install
 npm run dev
-```
-
-### 4. Mobile
-
-```bash
-cd mobile
-npm install
-npx expo start
 ```
 
 ## Estrutura
 
 ```text
 Pipocalizando/
-├── backend/   API REST e regras de negocio
-├── teste-ui/  Web app para clientes e admin
-├── mobile/    App mobile com fluxo por perfil
-└── database/  Scripts SQL e seeds
+|-- backend/   API REST e regras de negocio
+|-- frontend/  Web app para clientes e admin
+`-- database/  Scripts SQL e seeds
 ```
 
 ## Perfis

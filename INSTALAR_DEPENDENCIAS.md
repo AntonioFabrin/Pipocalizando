@@ -1,4 +1,4 @@
-# 📦 Dependências para instalar
+# Dependencias para instalar
 
 ## Backend (pasta /backend)
 
@@ -7,13 +7,13 @@ cd backend
 npm install multer @types/multer
 ```
 
-## Mobile (pasta /mobile)
+## Frontend (pasta /frontend)
 
 ```bash
-cd mobile
-npx expo install expo-image-picker
+cd frontend
+npm install
 ```
 
 ---
 
-Após instalar, reinicie o servidor backend e o Expo normalmente.
+Depois de instalar, reinicie o servidor backend e o frontend normalmente.
