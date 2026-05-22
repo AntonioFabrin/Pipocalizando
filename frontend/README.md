@@ -1,6 +1,7 @@
 # Pipocalizando Frontend
 
 Interface web oficial do Pipocalizando, feita em React + Vite.
+Nao se trata de React Native.
 
 ## Rodar localmente
 
