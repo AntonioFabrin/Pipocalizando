@@ -42,6 +42,7 @@ As capturas abaixo podem ser preenchidas com imagens reais do projeto em uma pas
 - `frontend`: aplicacao web em React + Vite
 - `backend`: API em Node.js + TypeScript + Express + MySQL
 - `database`: scripts SQL e seeds para o ambiente local
+- `docker`: ambiente completo com Docker Compose para subir frontend, backend e MySQL
 
 ## Funcionalidades
 
@@ -74,7 +75,7 @@ Depois disso:
 
 - frontend em `http://localhost:3000`
 - backend em `http://localhost:3333`
-- MySQL em `localhost:3306`
+- MySQL em `localhost:3307`
 
 O `docker compose` já sobe:
 
@@ -216,6 +217,32 @@ The sections below can be filled with real project images stored in a folder suc
 - role separation between `super_admin`, `manager`, `seller` and `customer`
 
 ## Run Locally
+
+### Docker
+
+This is the recommended way to run the project locally.
+
+```bash
+docker compose up --build
+```
+
+Or from the repository root:
+
+```bash
+npm run docker:up
+```
+
+After that:
+
+- frontend at `http://localhost:3000`
+- backend at `http://localhost:3333`
+- MySQL at `localhost:3307`
+
+To stop the containers:
+
+```bash
+npm run docker:down
+```
 
 ### 1. Database
 
