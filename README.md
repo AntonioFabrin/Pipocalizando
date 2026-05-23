@@ -56,6 +56,40 @@ As capturas abaixo podem ser preenchidas com imagens reais do projeto em uma pas
 
 ## Como rodar
 
+### Via Docker
+
+Se você quiser subir tudo já padronizado, use:
+
+```bash
+docker compose up --build
+```
+
+Ou, pela raiz do projeto:
+
+```bash
+npm run docker:up
+```
+
+Depois disso:
+
+- frontend em `http://localhost:3000`
+- backend em `http://localhost:3333`
+- MySQL em `localhost:3306`
+
+O `docker compose` já sobe:
+
+- o banco MySQL com schema, seeds e migrações principais
+- o backend apontando para o banco do container
+- o frontend com proxy para `/api` e `/uploads`
+
+Para parar os containers:
+
+```bash
+npm run docker:down
+```
+
+Na primeira subida, o MySQL inicializa o volume com os dados do projeto. Se você quiser recriar tudo do zero, precisará remover o volume do Docker antes de subir novamente.
+
 ### 1. Banco de dados
 
 Importe o schema principal:
