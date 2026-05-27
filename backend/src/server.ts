@@ -45,6 +45,8 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   res.status(err.status || 500).json({ message: err.message || 'Erro interno do servidor.' });
 });
 
+export default app;
+
 const start = async () => {
   try {
     await testConnection();
@@ -67,4 +69,6 @@ const start = async () => {
   }
 };
 
-start();
+if (require.main === module) {
+  start();
+}

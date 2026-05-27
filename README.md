@@ -120,6 +120,38 @@ Para rodar os testes basicos:
 npm test
 ```
 
+### Deploy do backend na Vercel
+
+O backend pode ser publicado como um projeto separado na Vercel usando a pasta `backend` como Root Directory.
+
+No painel da Vercel:
+
+- importe o repositorio pelo GitHub
+- em Root Directory, selecione `backend`
+- mantenha o framework como Express/Node.js, ou deixe a autodeteccao
+- configure as variaveis de ambiente do arquivo `backend/.env.example`
+- faca o deploy
+
+Variaveis minimas para producao:
+
+```env
+NODE_ENV=production
+DATABASE_URL=postgresql://...
+DIRECT_URL=postgresql://...
+JWT_SECRET=uma-chave-forte
+CORS_ORIGIN=https://seu-frontend.vercel.app
+FRONTEND_URL=https://seu-frontend.vercel.app
+```
+
+Depois do deploy, teste:
+
+```bash
+curl https://sua-api.vercel.app/
+curl https://sua-api.vercel.app/api/categories
+```
+
+Observacao: uploads locais em `backend/uploads` nao sao persistentes na Vercel. Para imagens em producao, use Supabase Storage, Vercel Blob ou outro storage externo.
+
 ### 3. Frontend
 
 ```bash
