@@ -152,6 +152,14 @@ curl https://sua-api.vercel.app/api/categories
 
 Observacao: uploads locais em `backend/uploads` nao sao persistentes na Vercel. Para imagens em producao, use Supabase Storage, Vercel Blob ou outro storage externo.
 
+Para usar Supabase Storage nos uploads da API, crie um bucket publico chamado `movie-posters` no Supabase e adicione estas variaveis no projeto do backend na Vercel:
+
+```env
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key
+SUPABASE_STORAGE_BUCKET=movie-posters
+```
+
 ### 3. Frontend
 
 ```bash
