@@ -48,8 +48,18 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 const start = async () => {
   try {
     await testConnection();
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
+    });
+
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`Porta ${PORT} ja esta em uso. Rode npm run dev novamente para liberar a porta automaticamente.`);
+        process.exit(1);
+      }
+
+      console.error('Falha ao iniciar servidor:', err);
+      process.exit(1);
     });
   } catch (err) {
     console.error('❌ Falha ao iniciar servidor:', err);

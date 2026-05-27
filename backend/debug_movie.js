@@ -1,180 +1,206 @@
 /**
- * PIPOCALIZANDO — DEBUG COMPLETO DE CRIAÇÃO DE FILME
- * ====================================================
- * Execute: node debug_movie.js
- * (dentro da pasta backend)
+ * Pipocalizando - PostgreSQL movie creation debug.
  *
- * O que este script faz:
- * 1. Testa conexão com o banco
- * 2. Verifica se a tabela movies existe e lista todas as colunas
- * 3. Verifica se as tabelas movie_categories e movie_rooms têm dados
- * 4. Verifica o usuário admin e sua role
- * 5. Tenta um INSERT real de filme e mostra o erro exato se falhar
- * 6. Se criou, deleta o filme de teste (limpeza)
+ * Run from the backend folder:
+ *   node debug_movie.js
+ *
+ * This script checks the Supabase/PostgreSQL schema used by the API and tries a
+ * real insert/delete cycle in the movies table.
  */
 
 require('dotenv').config();
-const mysql = require('mysql2/promise');
+const postgres = require('postgres');
 
-const DB = {
-  host:     process.env.DB_HOST     || 'localhost',
-  user:     process.env.DB_USER     || 'root',
-  password: process.env.DB_PASSWORD || '1234',
-  database: process.env.DB_NAME     || 'pipocalizando',
-  port:     Number(process.env.DB_PORT) || 3306,
-};
+const connectionString = process.env.DATABASE_URL || process.env.DIRECT_URL;
 
-async function run() {
-  let conn;
-  console.log('\n🔍 PIPOCALIZANDO — DEBUG DE CRIAÇÃO DE FILME');
-  console.log('═══════════════════════════════════════════\n');
-
-  // ── 1. CONEXÃO ────────────────────────────────────────────────
-  console.log('📡 [1/6] Testando conexão com o banco...');
-  try {
-    conn = await mysql.createConnection(DB);
-    console.log('   ✅ Conectado com sucesso!\n');
-  } catch (err) {
-    console.error('   ❌ ERRO DE CONEXÃO:', err.message);
-    console.error('   → Verifique se o MySQL está rodando e as credenciais no .env');
-    process.exit(1);
-  }
-
-  // ── 2. ESTRUTURA DA TABELA MOVIES ────────────────────────────
-  console.log('🗂  [2/6] Verificando estrutura da tabela movies...');
-  try {
-    const [cols] = await conn.query('DESCRIBE movies');
-    const colNames = cols.map(c => c.Field);
-    console.log('   Colunas encontradas:', colNames.join(', '));
-
-    const required = [
-      'id', 'title', 'description', 'category_id', 'genre',
-      'duration_minutes', 'director', 'cast_info', 'rating',
-      'poster_url', 'trailer_url', 'session_date', 'session_time',
-      'room', 'room_id', 'price', 'premiere_date', 'on_display_until',
-      'status', 'is_active',
-    ];
-
-    const missing = required.filter(c => !colNames.includes(c));
-    if (missing.length > 0) {
-      console.error('\n   ❌ COLUNAS FALTANDO NA TABELA MOVIES:', missing.join(', '));
-      console.error('   → Execute o arquivo database/FIX_COMPLETO.sql no HeidiSQL!\n');
-    } else {
-      console.log('   ✅ Todas as colunas necessárias existem!\n');
-    }
-  } catch (err) {
-    console.error('   ❌ Tabela movies não existe ou erro:', err.message);
-    console.error('   → Execute database/FIX_COMPLETO.sql no HeidiSQL!\n');
-    await conn.end();
-    process.exit(1);
-  }
-
-  // ── 3. CATEGORIAS E SALAS ────────────────────────────────────
-  console.log('📂 [3/6] Verificando categorias e salas...');
-  try {
-    const [[catCount]] = await conn.query('SELECT COUNT(*) as n FROM movie_categories WHERE is_active = 1');
-    const [[roomCount]] = await conn.query('SELECT COUNT(*) as n FROM movie_rooms WHERE is_active = 1');
-    console.log(`   Categorias de filmes: ${catCount.n}`);
-    console.log(`   Salas de cinema:      ${roomCount.n}`);
-    if (catCount.n === 0) console.warn('   ⚠️  Nenhuma categoria! Execute FIX_COMPLETO.sql.');
-    if (roomCount.n === 0) console.warn('   ⚠️  Nenhuma sala! Execute FIX_COMPLETO.sql.');
-    else console.log('   ✅ Categorias e salas OK\n');
-  } catch (err) {
-    console.error('   ❌ Erro ao consultar categorias/salas:', err.message);
-  }
-
-  // ── 4. USUÁRIO ADMIN ─────────────────────────────────────────
-  console.log('👤 [4/6] Verificando usuário admin...');
-  try {
-    const [users] = await conn.query(
-      "SELECT id, name, email, role FROM users WHERE email = 'admin@pipocalizando.com'"
-    );
-    if (users.length === 0) {
-      console.error('   ❌ Usuário admin@pipocalizando.com NÃO EXISTE!');
-      console.error('   → Execute: node database/criar_admin.js\n');
-    } else {
-      const u = users[0];
-      console.log(`   Usuário: ${u.name} (${u.email})`);
-      console.log(`   Role:    ${u.role}`);
-      const allowed = ['super_admin', 'manager', 'seller'];
-      if (!allowed.includes(u.role)) {
-        console.error(`   ❌ Role "${u.role}" NÃO tem permissão para criar filmes!`);
-        console.error(`   → Roles permitidas: ${allowed.join(', ')}`);
-        console.error('   → Execute: node database/criar_admin.js\n');
-      } else {
-        console.log('   ✅ Usuário tem permissão para criar filmes\n');
-      }
-    }
-  } catch (err) {
-    console.error('   ❌ Erro ao consultar usuário:', err.message);
-  }
-
-  // ── 5. TESTE DE INSERT ───────────────────────────────────────
-  console.log('🧪 [5/6] Tentando INSERT de filme de teste...');
-  let testId = null;
-  try {
-    const [result] = await conn.query(
-      `INSERT INTO movies
-        (title, description, category_id, genre, duration_minutes,
-         director, cast_info, rating, poster_url, trailer_url,
-         session_date, session_time, room, room_id,
-         price, premiere_date, on_display_until, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        '__TESTE_DEBUG__',
-        'Filme de teste criado pelo debug_movie.js',
-        1,              // category_id
-        'Teste',
-        90,
-        'Diretor Teste',
-        'Ator 1, Ator 2',
-        '12+',
-        null,           // poster_url
-        null,           // trailer_url
-        '2026-07-01',   // session_date
-        '19:00:00',     // session_time
-        'Sala 1',       // room
-        1,              // room_id
-        25.00,          // price
-        '2026-07-01',   // premiere_date
-        '2026-07-31',   // on_display_until
-        'now_playing',  // status
-      ]
-    );
-    testId = result.insertId;
-    console.log(`   ✅ INSERT funcionou! ID gerado: ${testId}\n`);
-  } catch (err) {
-    console.error('   ❌ ERRO NO INSERT:', err.message);
-    console.error('   SQL State:', err.sqlState);
-    console.error('   SQL Message completo:', err.sqlMessage || err.message);
-    console.error('\n   → Este é o erro que aparece como "Erro interno" no app!\n');
-    await conn.end();
-    process.exit(1);
-  }
-
-  // ── 6. LIMPEZA ───────────────────────────────────────────────
-  console.log('🧹 [6/6] Removendo filme de teste...');
-  if (testId) {
-    try {
-      await conn.query('DELETE FROM movies WHERE id = ?', [testId]);
-      console.log('   ✅ Filme de teste removido\n');
-    } catch (err) {
-      console.warn('   ⚠️  Não foi possível remover o filme de teste (ID', testId, ')');
-    }
-  }
-
-  await conn.end();
-
-  console.log('═══════════════════════════════════════════');
-  console.log('✅ DEBUG CONCLUÍDO — Se chegou até aqui sem erros,');
-  console.log('   o banco está OK. O problema pode ser:');
-  console.log('   1. Token JWT expirado → faça logout e login novamente');
-  console.log('   2. Dispositivo físico com IP errado no api.ts');
-  console.log('   3. Backend não estava rodando ao tentar criar');
-  console.log('═══════════════════════════════════════════\n');
+if (!connectionString) {
+  console.error('DATABASE_URL or DIRECT_URL is missing in backend/.env');
+  process.exit(1);
 }
 
-run().catch(err => {
-  console.error('ERRO FATAL:', err);
-  process.exit(1);
+const sql = postgres(connectionString, {
+  ssl: /localhost|127\.0\.0\.1|::1/i.test(connectionString) ? false : 'require',
+  max: 1,
+  idle_timeout: 20,
+  prepare: false,
 });
+
+const requiredMovieColumns = [
+  'id',
+  'title',
+  'description',
+  'category_id',
+  'genre',
+  'duration_minutes',
+  'director',
+  'cast_info',
+  'rating',
+  'poster_url',
+  'trailer_url',
+  'session_date',
+  'session_time',
+  'room',
+  'room_id',
+  'price',
+  'premiere_date',
+  'on_display_until',
+  'status',
+  'is_active',
+];
+
+const ok = (message) => console.log(`[OK] ${message}`);
+const warn = (message) => console.warn(`[WARN] ${message}`);
+const fail = (message) => console.error(`[FAIL] ${message}`);
+
+async function main() {
+  console.log('\nPipocalizando PostgreSQL movie debug');
+  console.log('='.repeat(48));
+
+  try {
+    const [connection] = await sql`
+      SELECT current_user, current_database()
+    `;
+    ok(`Connected as ${connection.current_user} on ${connection.current_database}`);
+  } catch (error) {
+    fail(`Could not connect to PostgreSQL: ${error.message}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    const columns = await sql`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'movies'
+      ORDER BY ordinal_position
+    `;
+    const columnNames = columns.map((column) => column.column_name);
+    const missing = requiredMovieColumns.filter((column) => !columnNames.includes(column));
+
+    if (missing.length > 0) {
+      fail(`Missing movies columns: ${missing.join(', ')}`);
+      console.log('Run database/schema.sql and the PostgreSQL migration files in database/.');
+      process.exitCode = 1;
+      return;
+    }
+
+    ok(`movies table has all required columns (${columnNames.length} total)`);
+  } catch (error) {
+    fail(`Could not inspect movies table: ${error.message}`);
+    console.log('Run database/schema.sql in the Supabase SQL editor.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const [{ count: categoryCount }] = await sql`
+    SELECT COUNT(*)::int AS count
+    FROM movie_categories
+    WHERE is_active = TRUE
+  `;
+  const [{ count: roomCount }] = await sql`
+    SELECT COUNT(*)::int AS count
+    FROM movie_rooms
+    WHERE is_active = TRUE
+  `;
+
+  if (categoryCount === 0) {
+    warn('No active movie categories found. Run database/seed.sql.');
+  } else {
+    ok(`${categoryCount} active movie categories found`);
+  }
+
+  if (roomCount === 0) {
+    warn('No active movie rooms found. Run database/seed.sql.');
+  } else {
+    ok(`${roomCount} active movie rooms found`);
+  }
+
+  const [admin] = await sql`
+    SELECT id, name, email, role
+    FROM users
+    WHERE email = 'admin@pipocalizando.com'
+  `;
+
+  if (!admin) {
+    warn('Admin user was not found. Run node ..\\database\\criar_admin.js.');
+  } else if (!['super_admin', 'manager', 'seller'].includes(admin.role)) {
+    warn(`Admin role "${admin.role}" cannot create movies.`);
+  } else {
+    ok(`Admin user exists with role ${admin.role}`);
+  }
+
+  let testMovieId = null;
+
+  try {
+    const [movie] = await sql`
+      INSERT INTO movies (
+        title,
+        description,
+        category_id,
+        genre,
+        duration_minutes,
+        director,
+        cast_info,
+        rating,
+        poster_url,
+        trailer_url,
+        session_date,
+        session_time,
+        room,
+        room_id,
+        price,
+        premiere_date,
+        on_display_until,
+        status
+      )
+      VALUES (
+        '__POSTGRES_DEBUG_MOVIE__',
+        'Temporary movie created by backend/debug_movie.js',
+        NULL,
+        'Debug',
+        90,
+        'Debug Director',
+        'Debug Cast',
+        '12+',
+        NULL,
+        NULL,
+        CURRENT_DATE + INTERVAL '7 days',
+        '19:00',
+        'Sala 1',
+        NULL,
+        25.00,
+        CURRENT_DATE,
+        CURRENT_DATE + INTERVAL '30 days',
+        'now_playing'
+      )
+      RETURNING id
+    `;
+
+    testMovieId = movie.id;
+    ok(`Insert worked. Generated movie id: ${testMovieId}`);
+  } catch (error) {
+    fail(`Movie insert failed: ${error.message}`);
+    process.exitCode = 1;
+    return;
+  } finally {
+    if (testMovieId) {
+      await sql`
+        DELETE FROM movies
+        WHERE id = ${testMovieId}
+      `;
+      ok(`Removed temporary movie id ${testMovieId}`);
+    }
+  }
+
+  ok('PostgreSQL movie debug completed successfully');
+}
+
+main()
+  .catch((error) => {
+    fail(`Unexpected debug failure: ${error.message}`);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await sql.end({ timeout: 5 }).catch(() => undefined);
+  });

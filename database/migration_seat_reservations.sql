@@ -1,27 +1,23 @@
--- ================================================================
--- PIPOCALIZANDO - Migracao: reservas temporarias de assentos
--- Segura assentos por 20 minutos antes da compra final.
--- ================================================================
-
-USE pipocalizando;
+-- ============================================================
+-- PostgreSQL migration: temporary seat reservations
+-- ============================================================
 
 CREATE TABLE IF NOT EXISTS seat_reservations (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  session_id INT NOT NULL,
-  movie_id INT NOT NULL,
-  user_id INT NOT NULL,
+  id BIGSERIAL PRIMARY KEY,
+  session_id BIGINT NOT NULL REFERENCES movie_sessions(id) ON DELETE CASCADE,
+  movie_id BIGINT NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   seat_label VARCHAR(10) NOT NULL,
   reservation_token VARCHAR(64) NOT NULL,
-  expires_at DATETIME NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (session_id) REFERENCES movie_sessions(id) ON DELETE CASCADE,
-  FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  UNIQUE KEY uq_seat_reservation (session_id, seat_label),
-  INDEX idx_seat_reservations_expiry (expires_at),
-  INDEX idx_seat_reservations_user_session (user_id, session_id)
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_seat_reservation UNIQUE (session_id, seat_label)
 );
 
-DELETE FROM seat_reservations WHERE expires_at <= NOW();
+CREATE INDEX IF NOT EXISTS idx_seat_reservations_expiry
+  ON seat_reservations (expires_at);
+CREATE INDEX IF NOT EXISTS idx_seat_reservations_user_session
+  ON seat_reservations (user_id, session_id);
 
-DESCRIBE seat_reservations;
+DELETE FROM seat_reservations
+WHERE expires_at <= NOW();

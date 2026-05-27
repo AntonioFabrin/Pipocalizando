@@ -1,323 +1,327 @@
 /**
- * 🔍 PIPOCALIZANDO — DEBUG COMPLETO DE CRIAÇÃO DE FILME
+ * Pipocalizando - end-to-end movie creation debug for PostgreSQL/Supabase.
  *
- * Testa cada camada individualmente e aponta exatamente onde está o problema.
+ * Run from the backend folder:
+ *   node ..\database\debug_criar_filme.js
  *
- * Execute: cd backend && node ..\database\debug_criar_filme.js
+ * Checks the database directly, then optionally checks the local HTTP API if
+ * the backend is running on http://localhost:3333.
  */
 
-const mysql  = require('mysql2/promise');
-const http   = require('http');
-const path   = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../backend/.env') });
+const http = require('http');
+const path = require('path');
+const { createRequire } = require('module');
 
-const BASE_URL = 'http://localhost:3333';
-const EMAIL    = 'admin@pipocalizando.com';
-const SENHA    = 'admin123';
+const backendRequire = createRequire(path.join(__dirname, '../backend/package.json'));
+const postgres = backendRequire('postgres');
+backendRequire('dotenv').config({ path: path.join(__dirname, '../backend/.env') });
 
-// ─── helper: faz requests HTTP sem axios ────────────────
-function request(method, urlPath, body, token) {
+const BASE_HOST = 'localhost';
+const BASE_PORT = 3333;
+const EMAIL = process.env.ADMIN_EMAIL || 'admin@pipocalizando.com';
+const PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const connectionString = process.env.DATABASE_URL || process.env.DIRECT_URL;
+
+if (!connectionString) {
+  console.error('DATABASE_URL or DIRECT_URL is missing in backend/.env');
+  process.exit(1);
+}
+
+const sql = postgres(connectionString, {
+  ssl: /localhost|127\.0\.0\.1|::1/i.test(connectionString) ? false : 'require',
+  max: 1,
+  idle_timeout: 20,
+  prepare: false,
+});
+
+const requiredMovieColumns = [
+  'id',
+  'title',
+  'description',
+  'category_id',
+  'genre',
+  'duration_minutes',
+  'director',
+  'cast_info',
+  'rating',
+  'poster_url',
+  'trailer_url',
+  'session_date',
+  'session_time',
+  'room',
+  'room_id',
+  'price',
+  'premiere_date',
+  'on_display_until',
+  'status',
+  'is_active',
+];
+
+const ok = (message) => console.log(`[OK] ${message}`);
+const warn = (message) => console.warn(`[WARN] ${message}`);
+const fail = (message) => console.error(`[FAIL] ${message}`);
+const section = (title) => {
+  console.log('\n' + title);
+  console.log('-'.repeat(title.length));
+};
+
+function request(method, urlPath, body, cookie) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
-    const options = {
-      hostname: 'localhost',
-      port: 3333,
-      path: urlPath,
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(data   ? { 'Content-Length': Buffer.byteLength(data) } : {}),
-        ...(token  ? { 'Authorization': `Bearer ${token}` }       : {}),
+    const req = http.request(
+      {
+        hostname: BASE_HOST,
+        port: BASE_PORT,
+        path: urlPath,
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
+          ...(cookie ? { Cookie: cookie } : {}),
+        },
       },
-    };
-    const req = http.request(options, (res) => {
-      let rawBody = '';
-      res.on('data', chunk => rawBody += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(rawBody);
-          resolve({ status: res.statusCode, data: json });
-        } catch {
-          resolve({ status: res.statusCode, data: rawBody });
-        }
-      });
-    });
+      (res) => {
+        let rawBody = '';
+        res.on('data', (chunk) => {
+          rawBody += chunk;
+        });
+        res.on('end', () => {
+          let parsedBody = rawBody;
+          try {
+            parsedBody = rawBody ? JSON.parse(rawBody) : null;
+          } catch {}
+
+          resolve({
+            status: res.statusCode,
+            data: parsedBody,
+            setCookie: res.headers['set-cookie'] || [],
+          });
+        });
+      },
+    );
+
     req.on('error', reject);
     if (data) req.write(data);
     req.end();
   });
 }
 
-// ─── helper: status colorido ────────────────────────────
-const OK  = (msg) => console.log(`  ✅ ${msg}`);
-const ERR = (msg) => console.log(`  ❌ ${msg}`);
-const INF = (msg) => console.log(`  ℹ️  ${msg}`);
-const SEP = ()    => console.log('\n' + '─'.repeat(60));
+function cookieHeaderFromSetCookie(setCookie) {
+  return setCookie.map((cookie) => cookie.split(';')[0]).join('; ');
+}
 
-async function main() {
-  console.log('\n🔍 PIPOCALIZANDO — DEBUG DE CRIAÇÃO DE FILME');
-  console.log('━'.repeat(60));
+async function checkDatabase() {
+  section('1. PostgreSQL connection');
 
-  // ═══════════════════════════════════════════════════════
-  // ETAPA 1: Banco de Dados direto
-  // ═══════════════════════════════════════════════════════
-  SEP();
-  console.log('📦 ETAPA 1 — Conexão com o Banco de Dados');
+  const [connection] = await sql`
+    SELECT current_user, current_database()
+  `;
+  ok(`Connected as ${connection.current_user} on ${connection.current_database}`);
 
-  let pool;
-  try {
-    pool = await mysql.createPool({
-      host:     process.env.DB_HOST     || 'localhost',
-      user:     process.env.DB_USER     || 'root',
-      password: process.env.DB_PASSWORD || '1234',
-      database: process.env.DB_NAME     || 'pipocalizando',
-      port:     Number(process.env.DB_PORT) || 3306,
-    });
-    await pool.query('SELECT 1');
-    OK(`Conectado em ${process.env.DB_HOST}:${process.env.DB_PORT} → banco: ${process.env.DB_NAME}`);
-  } catch (err) {
-    ERR(`Falha na conexão com MySQL: ${err.message}`);
-    console.log('\n⚠️  Sem banco, não é possível continuar. Verifique se o MySQL está rodando.\n');
-    process.exit(1);
+  section('2. movies schema');
+
+  const columns = await sql`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'movies'
+    ORDER BY ordinal_position
+  `;
+  const columnNames = columns.map((column) => column.column_name);
+  const missing = requiredMovieColumns.filter((column) => !columnNames.includes(column));
+
+  if (missing.length > 0) {
+    throw new Error(`Missing movies columns: ${missing.join(', ')}`);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ETAPA 2: Verificar colunas da tabela movies
-  // ═══════════════════════════════════════════════════════
-  SEP();
-  console.log('🗄️  ETAPA 2 — Estrutura da tabela `movies`');
+  ok(`movies table has all required columns (${columnNames.length} total)`);
 
-  const REQUIRED_COLS = [
-    'id','title','description','category_id','genre','duration_minutes',
-    'director','cast_info','rating','poster_url','trailer_url',
-    'session_date','session_time','room','room_id','price',
-    'premiere_date','on_display_until','status','is_active',
-  ];
+  section('3. seed data');
 
-  try {
-    const [cols] = await pool.query('DESCRIBE movies');
-    const colNames = cols.map(c => c.Field);
-    INF(`Colunas encontradas: ${colNames.join(', ')}`);
+  const [{ count: categoryCount }] = await sql`
+    SELECT COUNT(*)::int AS count
+    FROM movie_categories
+    WHERE is_active = TRUE
+  `;
+  const [{ count: roomCount }] = await sql`
+    SELECT COUNT(*)::int AS count
+    FROM movie_rooms
+    WHERE is_active = TRUE
+  `;
 
-    const missing = REQUIRED_COLS.filter(c => !colNames.includes(c));
-    if (missing.length === 0) {
-      OK('Todas as colunas necessárias existem!');
-    } else {
-      ERR(`Colunas FALTANDO: ${missing.join(', ')}`);
-      console.log('\n  👉 Execute o arquivo database/FIX_COMPLETO.sql no HeidiSQL!');
-    }
-  } catch (err) {
-    ERR(`Tabela movies não existe ou erro: ${err.message}`);
-    console.log('\n  👉 Execute o arquivo database/FIX_COMPLETO.sql no HeidiSQL!');
+  if (categoryCount === 0) {
+    warn('No active movie categories found. Run database/seed.sql.');
+  } else {
+    ok(`${categoryCount} active movie categories found`);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ETAPA 3: Verificar usuário admin e seu role
-  // ═══════════════════════════════════════════════════════
-  SEP();
-  console.log('👤 ETAPA 3 — Usuário admin');
-
-  try {
-    const [users] = await pool.query(
-      'SELECT id, name, email, role FROM users WHERE email = ?', [EMAIL]
-    );
-    if (users.length === 0) {
-      ERR(`Usuário ${EMAIL} não encontrado no banco!`);
-      console.log('\n  👉 Execute: node database/criar_admin.js');
-    } else {
-      const u = users[0];
-      INF(`Encontrado: id=${u.id} | name="${u.name}" | role="${u.role}"`);
-
-      const ALLOWED_ROLES = ['super_admin', 'manager', 'seller'];
-      if (ALLOWED_ROLES.includes(u.role)) {
-        OK(`Role "${u.role}" tem permissão para criar filmes ✓`);
-      } else {
-        ERR(`Role "${u.role}" NÃO tem permissão para criar filmes!`);
-        console.log(`\n  👉 Execute no HeidiSQL:`);
-        console.log(`     UPDATE users SET role = 'super_admin' WHERE email = '${EMAIL}';`);
-      }
-    }
-  } catch (err) {
-    ERR(`Erro ao buscar usuário: ${err.message}`);
+  if (roomCount === 0) {
+    warn('No active movie rooms found. Run database/seed.sql.');
+  } else {
+    ok(`${roomCount} active movie rooms found`);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ETAPA 4: Verificar movie_categories e movie_rooms
-  // ═══════════════════════════════════════════════════════
-  SEP();
-  console.log('📂 ETAPA 4 — Categorias e Salas');
+  section('4. admin user');
 
-  try {
-    const [cats]  = await pool.query('SELECT COUNT(*) as n FROM movie_categories');
-    const [rooms] = await pool.query('SELECT COUNT(*) as n FROM movie_rooms');
-    const nCats  = cats[0].n;
-    const nRooms = rooms[0].n;
+  const [admin] = await sql`
+    SELECT id, name, email, role
+    FROM users
+    WHERE email = ${EMAIL}
+  `;
 
-    if (nCats === 0) {
-      ERR(`Tabela movie_categories está VAZIA! O INSERT da categoria_id vai falhar com FK.`);
-      console.log('  👉 Execute database/FIX_COMPLETO.sql para popular as categorias.');
-    } else {
-      OK(`${nCats} categoria(s) de filme encontrada(s)`);
-    }
-
-    if (nRooms === 0) {
-      ERR(`Tabela movie_rooms está VAZIA! O INSERT de room_id vai falhar com FK.`);
-      console.log('  👉 Execute database/FIX_COMPLETO.sql para popular as salas.');
-    } else {
-      OK(`${nRooms} sala(s) encontrada(s)`);
-    }
-  } catch (err) {
-    ERR(`Erro ao verificar categorias/salas: ${err.message}`);
+  if (!admin) {
+    warn(`Admin ${EMAIL} was not found. Run node ..\\database\\criar_admin.js.`);
+  } else if (!['super_admin', 'manager', 'seller'].includes(admin.role)) {
+    warn(`Admin role "${admin.role}" cannot create movies.`);
+  } else {
+    ok(`Admin ${EMAIL} exists with role ${admin.role}`);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ETAPA 5: Inserir filme DIRETO no banco (sem HTTP)
-  // ═══════════════════════════════════════════════════════
-  SEP();
-  console.log('🗃️  ETAPA 5 — INSERT direto no banco');
+  section('5. direct movie insert');
 
-  let directInsertOk = false;
+  const [movie] = await sql`
+    INSERT INTO movies (
+      title,
+      description,
+      category_id,
+      genre,
+      duration_minutes,
+      director,
+      cast_info,
+      rating,
+      poster_url,
+      trailer_url,
+      session_date,
+      session_time,
+      room,
+      room_id,
+      price,
+      premiere_date,
+      on_display_until,
+      status
+    )
+    VALUES (
+      '__POSTGRES_DEBUG_DIRECT__',
+      'Temporary movie created by database/debug_criar_filme.js',
+      NULL,
+      'Debug',
+      90,
+      'Debug Director',
+      'Debug Cast',
+      '12+',
+      NULL,
+      NULL,
+      CURRENT_DATE + INTERVAL '7 days',
+      '19:00',
+      'Sala 1',
+      NULL,
+      20.00,
+      CURRENT_DATE,
+      CURRENT_DATE + INTERVAL '30 days',
+      'now_playing'
+    )
+    RETURNING id
+  `;
+
+  ok(`Direct insert worked. Generated movie id: ${movie.id}`);
+
+  await sql`
+    DELETE FROM movies
+    WHERE id = ${movie.id}
+  `;
+  ok(`Removed direct insert test movie id ${movie.id}`);
+}
+
+async function checkHttpApi() {
+  section('6. HTTP API');
+
+  let ping;
   try {
-    const [result] = await pool.query(
-      `INSERT INTO movies
-        (title, description, category_id, genre, duration_minutes,
-         director, cast_info, rating, poster_url, trailer_url,
-         session_date, session_time, room, room_id,
-         price, premiere_date, on_display_until, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        'DEBUG TEST FILME', 'Sinopse de teste do debug', null, 'Teste',
-        120, 'Diretor Teste', 'Elenco Teste', '12+',
-        null, null,
-        '2026-06-01', '19:00:00', 'Sala 1', null,
-        25.00, null, '2026-06-30', 'now_playing',
-      ]
-    );
-    OK(`INSERT bem-sucedido! id=${result.insertId}`);
-    directInsertOk = true;
-
-    // Remove o registro de teste
-    await pool.query('DELETE FROM movies WHERE id = ?', [result.insertId]);
-    INF(`Registro de teste removido (id=${result.insertId})`);
-  } catch (err) {
-    ERR(`Falha no INSERT direto: ${err.message}`);
-    console.log(`\n  👉 Erro SQL exato: ${err.sqlMessage || err.message}`);
-    if (err.message.includes('Column')) {
-      console.log('  👉 Coluna faltando — execute database/FIX_COMPLETO.sql no HeidiSQL!');
-    }
-    if (err.message.includes('foreign key')) {
-      console.log('  👉 FK inválida — verifique se movie_categories e movie_rooms têm dados!');
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // ETAPA 6: Testar API HTTP — servidor está rodando?
-  // ═══════════════════════════════════════════════════════
-  SEP();
-  console.log('🌐 ETAPA 6 — Servidor HTTP (backend rodando?)');
-
-  let token = null;
-  try {
-    const pingRes = await request('GET', '/', null, null);
-    if (pingRes.status === 200) {
-      OK(`Servidor respondendo: ${JSON.stringify(pingRes.data)}`);
-    } else {
-      ERR(`Servidor retornou status ${pingRes.status}`);
-    }
-  } catch (err) {
-    ERR(`Servidor NÃO está respondendo em ${BASE_URL}`);
-    console.log('  👉 Rode no terminal: cd backend && npm run dev');
-    console.log('\n⚠️  Pulando testes HTTP — inicie o servidor primeiro.\n');
-    await pool.end();
+    ping = await request('GET', '/', null, null);
+  } catch {
+    warn(`Backend is not responding on http://${BASE_HOST}:${BASE_PORT}. Skipping HTTP checks.`);
+    console.log('Start it with: cd backend && npm run dev');
     return;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ETAPA 7: Login via API
-  // ═══════════════════════════════════════════════════════
-  SEP();
-  console.log('🔐 ETAPA 7 — Login via API');
-
-  try {
-    const loginRes = await request('POST', '/api/auth/login', { email: EMAIL, password: SENHA }, null);
-    if (loginRes.status === 200 && loginRes.data.token) {
-      token = loginRes.data.token;
-      OK(`Login OK! role="${loginRes.data.user?.role}" | token obtido ✓`);
-    } else if (loginRes.status === 401) {
-      ERR(`Credenciais inválidas para ${EMAIL} / ${SENHA}`);
-      console.log('  👉 Execute: node database/criar_admin.js');
-    } else {
-      ERR(`Login falhou: ${JSON.stringify(loginRes.data)}`);
-    }
-  } catch (err) {
-    ERR(`Erro no login: ${err.message}`);
+  if (ping.status !== 200) {
+    warn(`Backend responded with status ${ping.status}. Skipping HTTP checks.`);
+    return;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ETAPA 8: POST /api/movies via HTTP
-  // ═══════════════════════════════════════════════════════
-  SEP();
-  console.log('🎬 ETAPA 8 — POST /api/movies via HTTP');
+  ok('Backend root endpoint is responding');
 
-  if (!token) {
-    ERR('Sem token — pulando teste de criação de filme via API.');
-  } else {
-    const payload = {
-      title:            'Filme de Debug HTTP',
-      description:      'Criado pelo script de debug',
-      genre:            'Teste',
+  const login = await request('POST', '/api/auth/login', { email: EMAIL, password: PASSWORD }, null);
+  if (login.status !== 200) {
+    warn(`Login failed with status ${login.status}: ${JSON.stringify(login.data)}`);
+    console.log('If needed, reset the admin with: node ..\\database\\criar_admin.js');
+    return;
+  }
+
+  const cookie = cookieHeaderFromSetCookie(login.setCookie);
+  if (!cookie) {
+    warn('Login succeeded, but no auth cookie was returned. Skipping authenticated movie creation.');
+    return;
+  }
+
+  ok(`Login succeeded for ${EMAIL}`);
+
+  const create = await request(
+    'POST',
+    '/api/movies',
+    {
+      title: 'Filme de Debug HTTP',
+      description: 'Temporary movie created by database/debug_criar_filme.js',
+      genre: 'Debug',
       duration_minutes: 90,
-      director:         'Debugger',
-      cast_info:        'Debug Actor',
-      rating:           '12+',
-      poster_url:       null,
-      trailer_url:      null,
-      session_date:     '2026-06-01',
-      session_time:     '19:00',
-      room:             'Sala 1',
-      room_id:          null,
-      category_id:      null,
-      price:            20.00,
-      premiere_date:    null,
-      on_display_until: '2026-06-30',
-      status:           'now_playing',
-    };
+      director: 'Debugger',
+      cast_info: 'Debug Actor',
+      rating: '12+',
+      poster_url: null,
+      trailer_url: null,
+      session_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      session_time: '19:00',
+      room: 'Sala 1',
+      room_id: null,
+      category_id: null,
+      price: 20.0,
+      premiere_date: new Date().toISOString().slice(0, 10),
+      on_display_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      status: 'now_playing',
+    },
+    cookie,
+  );
 
-    try {
-      const createRes = await request('POST', '/api/movies', payload, token);
-      if (createRes.status === 201) {
-        OK(`Filme criado via API! id=${createRes.data.id}`);
-        // Remove o filme de teste
-        await pool.query('DELETE FROM movies WHERE title = ?', ['Filme de Debug HTTP']);
-        INF('Filme de teste removido do banco.');
-      } else if (createRes.status === 403) {
-        ERR(`403 Forbidden — o usuário não tem permissão (role insuficiente)`);
-        console.log('  👉 Verifique o role do admin no banco e no token JWT');
-      } else if (createRes.status === 401) {
-        ERR('401 Unauthorized — token inválido ou expirado');
-      } else {
-        ERR(`API retornou ${createRes.status}: ${JSON.stringify(createRes.data)}`);
-        if (createRes.data?.detail) {
-          console.log(`\n  🧨 Erro SQL exato: ${createRes.data.detail}`);
-        }
-      }
-    } catch (err) {
-      ERR(`Erro na requisição: ${err.message}`);
-    }
+  if (create.status !== 201) {
+    warn(`Movie creation API returned ${create.status}: ${JSON.stringify(create.data)}`);
+    return;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // RESUMO FINAL
-  // ═══════════════════════════════════════════════════════
-  SEP();
-  console.log('📋 FIM DO DEBUG\n');
-  console.log('Se todas as etapas mostram ✅, o sistema está funcional.');
-  console.log('Etapas com ❌ indicam exatamente onde está o problema.\n');
+  ok(`Movie creation API worked. Generated id: ${create.data.id}`);
 
-  await pool.end();
+  await sql`
+    DELETE FROM movies
+    WHERE title = 'Filme de Debug HTTP'
+  `;
+  ok('Removed HTTP test movie');
 }
 
-main().catch(err => {
-  console.error('\n💥 Erro fatal no script de debug:', err.message);
-  process.exit(1);
-});
+async function main() {
+  console.log('\nPipocalizando PostgreSQL end-to-end movie debug');
+  console.log('='.repeat(56));
+
+  await checkDatabase();
+  await checkHttpApi();
+
+  section('Done');
+  ok('Debug finished');
+}
+
+main()
+  .catch((error) => {
+    fail(error.message);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await sql.end({ timeout: 5 }).catch(() => undefined);
+  });

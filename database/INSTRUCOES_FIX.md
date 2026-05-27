@@ -1,124 +1,82 @@
-# 🎬 Pipocalizando — Guia de Correção e Setup
+# Pipocalizando - Setup do banco no Supabase
 
-## ⚡ EXECUTE NA ORDEM ABAIXO
+Este projeto usa somente PostgreSQL/Supabase. Nao use scripts MySQL/HeidiSQL para preparar o banco.
 
----
+## Ordem recomendada
 
-## PASSO 1 — Corrigir o banco de dados (HeidiSQL)
-
-1. Abra o **HeidiSQL**
-2. Conecte ao banco `pipocalizando`
-3. Abra o arquivo `database/FIX_COMPLETO.sql`
-4. Pressione **F9** para executar tudo
-5. Verifique que o `DESCRIBE movies` no final mostra as colunas:
-   - `category_id`, `room_id`, `trailer_url`, `status`, `on_display_until`, `premiere_date`
-
----
-
-## PASSO 2 — Criar/resetar o usuário admin com senha real
-
-Execute no terminal dentro da pasta do projeto:
+1. Abra o projeto `Pipocalizando` no Supabase.
+2. No SQL Editor, execute `database/schema.sql`.
+3. Para dados iniciais, execute `database/seed.sql`.
+4. Se estiver reaproveitando um banco antigo, execute depois:
+   - `database/migration_session_and_reset.sql`
+   - `database/migration_tickets_seats.sql`
+   - `database/migration_seat_reservations.sql`
+   - `database/migration_mercado_pago_payments.sql`
+   - `database/update_roles.sql`
+5. No backend, configure:
+   - `DATABASE_URL`
+   - `DIRECT_URL`
+6. Para criar ou resetar o admin, rode:
 
 ```bash
 cd C:\Users\Antonio\Desktop\Pipocalizando\backend
 node ..\database\criar_admin.js
 ```
 
-Isso cria ou atualiza:
-- **Email:** admin@pipocalizando.com
-- **Senha:** admin123
-- **Role:** super_admin
+## Admin padrao
 
-> Para trocar a senha, edite a variável `SENHA` no arquivo `database/criar_admin.js` antes de rodar.
+- Email: `admin@pipocalizando.com`
+- Senha: `admin123`
+- Role: `super_admin`
 
----
-
-## PASSO 3 — Reiniciar o backend
+## Reiniciar o backend
 
 ```bash
 cd C:\Users\Antonio\Desktop\Pipocalizando\backend
 npm run dev
 ```
 
-Aguarde a mensagem:
-```
-✅ MySQL conectado com sucesso!
-🚀 Servidor rodando em http://localhost:3333
-```
+Voce deve ver a mensagem de conexao com PostgreSQL e o servidor subindo normalmente.
 
----
+## Testes rapidos
 
-## PASSO 4 — Testar no Insomnia
+Para validar a conexao PostgreSQL:
 
-### Login (para obter token):
-- **Método:** POST
-- **URL:** `http://localhost:3333/api/auth/login`
-- **Body JSON:**
-```json
-{
-  "email": "admin@pipocalizando.com",
-  "password": "admin123"
-}
-```
-Copie o `token` da resposta.
-
----
-
-### Criar filme:
-- **Método:** POST
-- **URL:** `http://localhost:3333/api/movies`
-- **Header:** `Authorization: Bearer SEU_TOKEN_AQUI`
-- **Body JSON:**
-```json
-{
-  "title": "Meu Primeiro Filme",
-  "description": "Sinopse do filme de teste",
-  "genre": "Ação",
-  "duration_minutes": 120,
-  "director": "Diretor Teste",
-  "cast_info": "Ator 1, Atriz 2",
-  "rating": "12+",
-  "category_id": 1,
-  "room_id": 1,
-  "room": "Sala 1",
-  "price": 25.00,
-  "session_date": "2026-06-01",
-  "session_time": "19:00",
-  "premiere_date": "2026-06-01",
-  "on_display_until": "2026-06-30",
-  "status": "now_playing"
-}
+```bash
+cd C:\Users\Antonio\Desktop\Pipocalizando\backend
+npm run db:debug
 ```
 
-**Resposta esperada:**
-```json
-{ "message": "Filme criado!", "id": 1 }
+Para validar a criacao de filme direto no banco:
+
+```bash
+cd C:\Users\Antonio\Desktop\Pipocalizando\backend
+node debug_movie.js
 ```
 
-Se retornar `500` com `"detail": "..."` agora você vê o erro real no terminal do backend.
+Para validar banco e API local:
 
----
+```bash
+cd C:\Users\Antonio\Desktop\Pipocalizando\backend
+node ..\database\debug_criar_filme.js
+```
 
-## O que foi corrigido
+Tambem faca login com o admin acima e valide se:
 
-| Arquivo | Problema | Correção |
-|---|---|---|
-| `backend/src/controllers/movieController.ts` | `catch` silenciava o erro SQL real | Todos os `catch` agora logam `err.message` e retornam `detail` |
-| `backend/src/controllers/movieController.ts` | `trailer_url` presente no payload do front mas nunca inserido no banco | Adicionado ao `INSERT` e `UPDATE` |
-| `backend/src/controllers/movieController.ts` | `ORDER BY session_date` quebrava quando `session_date = NULL` | Corrigido com `ISNULL(m.session_date) ASC` |
-| `backend/src/controllers/authController.ts` | Erros internos suprimidos | Todos os `catch` agora logam o erro real |
-| `backend/src/controllers/orderController.ts` | Erros internos suprimidos | Todos os `catch` agora logam o erro real |
-| `database/FIX_COMPLETO.sql` | Colunas `category_id`, `room_id`, `status`, `trailer_url` podem estar faltando na tabela `movies` | Script `ADD COLUMN IF NOT EXISTS` para cada coluna |
-| `database/FIX_COMPLETO.sql` | Role `'admin'` não existe no sistema (usa `'super_admin'`) | `UPDATE users SET role = 'super_admin' WHERE role = 'admin'` |
-| `database/criar_admin.js` | Sem forma de criar admin com senha hasheada | Script Node para criar/resetar o admin |
+- filmes carregam
+- pedidos abrem
+- reserva de assentos funciona
+- pagamentos continuam criando registros em `payments`
 
----
+## Arquivos principais
 
-## Roles do sistema
-
-| Role | Pode criar filmes | Pode gerenciar pedidos | Pode gerenciar usuários |
-|---|---|---|---|
-| `super_admin` | ✅ | ✅ | ✅ |
-| `manager` | ✅ | ✅ | ✅ (exceto super_admin) |
-| `seller` | ✅ | ✅ (próprios) | ❌ |
-| `customer` | ❌ | ❌ | ❌ |
+| Arquivo | Uso |
+|---|---|
+| `database/schema.sql` | Schema completo do Supabase |
+| `database/seed.sql` | Dados iniciais do Supabase |
+| `database/migration_session_and_reset.sql` | Tokens de sessao e reset de senha |
+| `database/migration_tickets_seats.sql` | Ajustes de tickets por assento |
+| `database/migration_seat_reservations.sql` | Reservas temporarias |
+| `database/migration_mercado_pago_payments.sql` | Colunas extras do Mercado Pago |
+| `database/update_roles.sql` | Normalizacao de roles antigas |
+| `database/criar_admin.js` | Cria ou reseta o admin |

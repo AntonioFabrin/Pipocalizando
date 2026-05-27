@@ -220,7 +220,7 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
       FROM orders o
       LEFT JOIN (
         SELECT order_id,
-               GROUP_CONCAT(ticket_code ORDER BY id SEPARATOR ', ') AS ticket_code,
+               STRING_AGG(ticket_code, ', ' ORDER BY id) AS ticket_code,
                MIN(issued_at) AS ticket_issued_at
         FROM tickets
         GROUP BY order_id
@@ -362,12 +362,12 @@ export const getSalesReport = async (req: Request, res: Response): Promise<void>
       JOIN users u ON u.id = o.customer_id
       LEFT JOIN (
         SELECT order_id,
-               GROUP_CONCAT(ticket_code ORDER BY id SEPARATOR ', ') AS ticket_code,
+               STRING_AGG(ticket_code, ', ' ORDER BY id) AS ticket_code,
                MIN(issued_at) AS ticket_issued_at
         FROM tickets
         GROUP BY order_id
       ) tk ON tk.order_id = o.id
-      WHERE COALESCE(p.paid_at, o.created_at) >= DATE_SUB(NOW(), INTERVAL ? DAY)
+      WHERE COALESCE(p.paid_at, o.created_at) >= NOW() - (? * INTERVAL '1 day')
       ORDER BY COALESCE(p.paid_at, o.created_at) DESC, o.id DESC
       `,
       [periodDays]
@@ -436,7 +436,7 @@ export const getSalesReport = async (req: Request, res: Response): Promise<void>
              COALESCE(SUM(o.total), 0) AS revenue
       FROM orders o
       JOIN payments p ON p.order_id = o.id AND p.status = 'approved'
-      WHERE COALESCE(p.paid_at, o.created_at) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      WHERE COALESCE(p.paid_at, o.created_at) >= CURRENT_DATE - (? * INTERVAL '1 day')
       GROUP BY DATE(COALESCE(p.paid_at, o.created_at))
       ORDER BY sale_day ASC
       `,
@@ -453,7 +453,7 @@ export const getSalesReport = async (req: Request, res: Response): Promise<void>
       JOIN payments pay ON pay.order_id = o.id AND pay.status = 'approved'
       JOIN order_items oi ON oi.order_id = o.id
       JOIN products p ON p.id = oi.product_id
-      WHERE COALESCE(pay.paid_at, o.created_at) >= DATE_SUB(NOW(), INTERVAL ? DAY)
+      WHERE COALESCE(pay.paid_at, o.created_at) >= NOW() - (? * INTERVAL '1 day')
       GROUP BY p.id, p.name
       ORDER BY quantity_sold DESC, revenue DESC
       LIMIT 8

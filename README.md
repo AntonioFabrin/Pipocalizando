@@ -1,7 +1,7 @@
 # Pipocalizando
 
 <p align="center">
-  <strong>Sistema web de cinema e bomboniere feito com React, Node.js, TypeScript e MySQL.</strong>
+  <strong>Sistema web de cinema e bomboniere feito com React, Node.js, TypeScript e PostgreSQL (Supabase).</strong>
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Build-Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
   <img src="https://img.shields.io/badge/Backend-Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
   <img src="https://img.shields.io/badge/Language-TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Database-MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white" alt="MySQL" />
+  <img src="https://img.shields.io/badge/Database-PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL" />
 </p>
 
 ## Preview
@@ -40,8 +40,11 @@ As capturas abaixo podem ser preenchidas com imagens reais do projeto em uma pas
 ## Tecnologias
 
 - `frontend`: aplicacao web em React + Vite
-- `backend`: API em Node.js + TypeScript + Express + MySQL
-- `database`: scripts SQL e seeds para o ambiente local
+- `backend`: API em Node.js + TypeScript + Express + PostgreSQL
+- `database`: scripts SQL e seeds de referencia do projeto
+- `docker`: ambiente completo com Docker Compose para subir frontend e backend
+
+> Nota: o banco oficial do projeto e somente Supabase/PostgreSQL. Scripts e dependencias antigas de MySQL foram removidos.
 
 ## Funcionalidades
 
@@ -74,12 +77,9 @@ Depois disso:
 
 - frontend em `http://localhost:3000`
 - backend em `http://localhost:3333`
-- MySQL em `localhost:3306`
-
 O `docker compose` já sobe:
 
-- o banco MySQL com schema, seeds e migrações principais
-- o backend apontando para o banco do container
+- o backend apontando para o Supabase via `DATABASE_URL`
 - o frontend com proxy para `/api` e `/uploads`
 
 Para parar os containers:
@@ -88,23 +88,21 @@ Para parar os containers:
 npm run docker:down
 ```
 
-Na primeira subida, o MySQL inicializa o volume com os dados do projeto. Se você quiser recriar tudo do zero, precisará remover o volume do Docker antes de subir novamente.
+Na primeira subida, o backend se conecta ao Supabase. Se voce trocar a URL do banco, reinicie o container para aplicar a mudanca.
 
 ### 1. Banco de dados
 
-Importe o schema principal:
+Abra o projeto no Supabase e execute `database/schema.sql` no SQL Editor.
 
-```bash
-mysql -u root -p < database/schema.sql
-```
+Para dados iniciais, execute tambem `database/seed.sql`.
 
-Se quiser aplicar as melhorias de ingressos e assentos em um banco existente:
+Se estiver reaproveitando um banco antigo, rode depois:
 
-```bash
-mysql -u root -p < database/migration_tickets_seats.sql
-mysql -u root -p < database/migration_seat_reservations.sql
-mysql -u root -p < database/migration_mercado_pago_payments.sql
-```
+- `database/migration_session_and_reset.sql`
+- `database/migration_tickets_seats.sql`
+- `database/migration_seat_reservations.sql`
+- `database/migration_mercado_pago_payments.sql`
+- `database/update_roles.sql`
 
 ### 2. Backend
 
@@ -150,19 +148,17 @@ Pipocalizando/
 
 ## Demo
 
-Se o banco estiver com os seeds da demo, o projeto costuma usar:
+Para recriar o admin, use `database/criar_admin.js`.
 
 - e-mail: `admin@pipocalizando.com`
 - senha: `admin123`
-
-Consulte `database/criar_admin.js` se precisar recriar o usuario administrativo.
 
 ---
 
 # Pipocalizando
 
 <p align="center">
-  <strong>Web-based cinema and snack bar system built with React, Node.js, TypeScript and MySQL.</strong>
+  <strong>Web-based cinema and snack bar system built with React, Node.js, TypeScript and PostgreSQL (Supabase).</strong>
 </p>
 
 <p align="center">
@@ -174,7 +170,7 @@ Consulte `database/criar_admin.js` se precisar recriar o usuario administrativo.
   <img src="https://img.shields.io/badge/Build-Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
   <img src="https://img.shields.io/badge/Backend-Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
   <img src="https://img.shields.io/badge/Language-TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Database-MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white" alt="MySQL" />
+  <img src="https://img.shields.io/badge/Database-PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL" />
 </p>
 
 ## Preview
@@ -201,8 +197,8 @@ The sections below can be filled with real project images stored in a folder suc
 ## Technologies
 
 - `frontend`: React + Vite web application
-- `backend`: Node.js + TypeScript + Express + MySQL API
-- `database`: SQL scripts and local seed data
+- `backend`: Node.js + TypeScript + Express + PostgreSQL API
+- `database`: SQL scripts and Supabase seed data
 
 ## Features
 
@@ -217,21 +213,43 @@ The sections below can be filled with real project images stored in a folder suc
 
 ## Run Locally
 
+### Docker
+
+This is the recommended way to run the project locally.
+
+```bash
+docker compose up --build
+```
+
+Or from the repository root:
+
+```bash
+npm run docker:up
+```
+
+After that:
+
+- frontend at `http://localhost:3000`
+- backend at `http://localhost:3333`
+To stop the containers:
+
+```bash
+npm run docker:down
+```
+
 ### 1. Database
 
-Import the main schema:
+Open the Supabase project and run `database/schema.sql` in the SQL Editor.
 
-```bash
-mysql -u root -p < database/schema.sql
-```
+For initial data, also run `database/seed.sql`.
 
-To apply ticket and seat improvements to an existing database:
+If you are upgrading an existing database, run:
 
-```bash
-mysql -u root -p < database/migration_tickets_seats.sql
-mysql -u root -p < database/migration_seat_reservations.sql
-mysql -u root -p < database/migration_mercado_pago_payments.sql
-```
+- `database/migration_session_and_reset.sql`
+- `database/migration_tickets_seats.sql`
+- `database/migration_seat_reservations.sql`
+- `database/migration_mercado_pago_payments.sql`
+- `database/update_roles.sql`
 
 ### 2. Backend
 
@@ -277,9 +295,7 @@ Pipocalizando/
 
 ## Demo
 
-If the database has demo seeds, the project usually uses:
+To recreate the admin user, run `database/criar_admin.js`.
 
 - email: `admin@pipocalizando.com`
 - password: `admin123`
-
-Check `database/criar_admin.js` if you need to recreate the admin user.

@@ -14,49 +14,39 @@ const deleteExpiredReservations = async (conn: any): Promise<void> => {
 const ensureSeatReservationsTable = async (conn: any): Promise<void> => {
   await conn.query(`
     CREATE TABLE IF NOT EXISTS seat_reservations (
-      id INT AUTO_INCREMENT PRIMARY KEY,
+      id SERIAL PRIMARY KEY,
       session_id INT NOT NULL,
       movie_id INT NOT NULL,
       user_id INT NOT NULL,
       seat_label VARCHAR(10) NOT NULL,
       reservation_token VARCHAR(64) NOT NULL,
-      expires_at DATETIME NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES movie_sessions(id) ON DELETE CASCADE,
       FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      UNIQUE KEY uq_seat_reservation (session_id, seat_label),
-      INDEX idx_seat_reservations_expiry (expires_at),
-      INDEX idx_seat_reservations_user_session (user_id, session_id)
+      UNIQUE (session_id, seat_label)
     )
   `);
+
+  await conn.query(
+    'CREATE INDEX IF NOT EXISTS idx_seat_reservations_expiry ON seat_reservations (expires_at)'
+  );
+  await conn.query(
+    'CREATE INDEX IF NOT EXISTS idx_seat_reservations_user_session ON seat_reservations (user_id, session_id)'
+  );
 };
 
 const ensureMercadoPagoPaymentColumns = async (conn: any): Promise<void> => {
-  const [columns]: any = await conn.query(
-    `SELECT COLUMN_NAME
-     FROM INFORMATION_SCHEMA.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments'`
-  );
-  const existing = new Set(columns.map((column: any) => column.COLUMN_NAME));
-
-  const missingDefinitions: Array<[string, string]> = [
-    ['status_detail', 'ADD COLUMN status_detail VARCHAR(100) NULL AFTER status'],
-    ['provider', 'ADD COLUMN provider VARCHAR(50) NULL AFTER status_detail'],
-    ['provider_payment_id', 'ADD COLUMN provider_payment_id VARCHAR(100) NULL AFTER provider'],
-    ['external_reference', 'ADD COLUMN external_reference VARCHAR(100) NULL AFTER provider_payment_id'],
-    ['checkout_url', 'ADD COLUMN checkout_url VARCHAR(500) NULL AFTER external_reference'],
-    ['qr_code', 'ADD COLUMN qr_code TEXT NULL AFTER checkout_url'],
-    ['qr_code_base64', 'ADD COLUMN qr_code_base64 MEDIUMTEXT NULL AFTER qr_code'],
-    ['expires_at', 'ADD COLUMN expires_at DATETIME NULL AFTER qr_code_base64'],
-    ['raw_response', 'ADD COLUMN raw_response JSON NULL AFTER expires_at'],
-  ];
-
-  for (const [columnName, definition] of missingDefinitions) {
-    if (!existing.has(columnName)) {
-      await conn.query(`ALTER TABLE payments ${definition}`);
-    }
-  }
+  await conn.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS status_detail VARCHAR(100)');
+  await conn.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS provider VARCHAR(50)');
+  await conn.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS provider_payment_id VARCHAR(100)');
+  await conn.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS external_reference VARCHAR(100)');
+  await conn.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS checkout_url VARCHAR(500)');
+  await conn.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS qr_code TEXT');
+  await conn.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS qr_code_base64 TEXT');
+  await conn.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP');
+  await conn.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS raw_response JSONB');
 };
 
 const findConflictingReservations = async (
@@ -144,7 +134,7 @@ export const reserveSeats = async (req: Request, res: Response): Promise<void> =
     for (const seat of seats) {
       const [refreshResult]: any = await conn.query(
         `UPDATE seat_reservations
-         SET reservation_token = ?, expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE)
+         SET reservation_token = ?, expires_at = NOW() + (? * INTERVAL '1 minute')
          WHERE session_id = ? AND seat_label = ? AND user_id = ?`,
         [reservationToken, RESERVATION_MINUTES, sessionId, seat, userId]
       );
@@ -152,8 +142,8 @@ export const reserveSeats = async (req: Request, res: Response): Promise<void> =
       if (refreshResult.affectedRows === 0) {
         await conn.query(
           `INSERT INTO seat_reservations (session_id, movie_id, user_id, seat_label, reservation_token, expires_at)
-           VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))`,
-        [sessionId, movieId, userId, seat, reservationToken, RESERVATION_MINUTES]
+           VALUES (?, ?, ?, ?, ?, NOW() + (? * INTERVAL '1 minute'))`,
+          [sessionId, movieId, userId, seat, reservationToken, RESERVATION_MINUTES]
         );
       }
     }

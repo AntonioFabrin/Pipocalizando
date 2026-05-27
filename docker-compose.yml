@@ -1,41 +1,15 @@
 services:
-  mysql:
-    image: mysql:8.4
-    container_name: pipocalizando-mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: pipocalizando_root
-      MYSQL_DATABASE: pipocalizando
-      MYSQL_USER: pipocalizando
-      MYSQL_PASSWORD: pipocalizando
-      TZ: America/Sao_Paulo
-    ports:
-      - "3307:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./database:/docker-entrypoint-initdb.d/sql:ro
-      - ./docker/mysql/init/00-init.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-ppipocalizando_root"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 20s
-
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: pipocalizando-backend
     restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
       NODE_ENV: development
       PORT: 3333
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_USER: pipocalizando
-      DB_PASSWORD: pipocalizando
-      DB_NAME: pipocalizando
       JWT_SECRET: dev-jwt-secret-pipocalizando
       FRONTEND_URL: http://localhost:3000
       CORS_ORIGIN: http://localhost:3000
@@ -49,9 +23,6 @@ services:
       - "3333:3333"
     volumes:
       - backend_uploads:/app/backend/uploads
-    depends_on:
-      mysql:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3333/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 10s
@@ -74,5 +45,4 @@ services:
         condition: service_healthy
 
 volumes:
-  mysql_data:
   backend_uploads:
