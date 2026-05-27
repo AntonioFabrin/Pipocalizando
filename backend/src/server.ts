@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import os from 'os';
 import routes from './routes';
 import { testConnection } from './config/db';
 
@@ -26,7 +27,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ── Servir arquivos de upload estaticamente ──────────────
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+const uploadDir = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'uploads')
+  : path.join(process.cwd(), 'uploads');
+
+app.use('/uploads', express.static(uploadDir));
 
 app.get('/', (_req: Request, res: Response) => {
   res.json({ message: '🍿 Pipocalizando API rodando!', version: '1.1.0' });
