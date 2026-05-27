@@ -2,40 +2,57 @@ import { v4 as uuidv4 } from 'uuid';
 import pool from '../config/db';
 
 const isMissingMercadoPagoColumns = (err: any): boolean =>
-  err?.code === 'ER_BAD_FIELD_ERROR' ||
+  err?.code === '42703' ||
   (typeof err?.message === 'string' && (
     err.message.includes('expires_at') ||
     err.message.includes('status_detail')
   ));
 
 export const cleanupExpiredTicketPayments = async (conn: any = pool): Promise<void> => {
+  let expiredOrders: Array<{ id: number; order_id: number }> = [];
+
   try {
-    await conn.query(
-      `UPDATE orders o
-       JOIN payments p ON p.order_id = o.id
-       SET o.status = 'cancelled',
-           p.status = 'rejected',
-           p.status_detail = COALESCE(p.status_detail, 'expired')
+    const [rows]: any = await conn.query(
+      `SELECT p.id, p.order_id
+       FROM payments p
        WHERE p.method = 'pix'
          AND p.status = 'pending'
          AND p.expires_at IS NOT NULL
          AND p.expires_at <= NOW()`
     );
+
+    expiredOrders = rows;
+    if (expiredOrders.length === 0) {
+      return;
+    }
+
+    const paymentIds = expiredOrders.map((row) => row.id);
+    const orderIds = [...new Set(expiredOrders.map((row) => row.order_id))];
+
+    await conn.query(
+      `UPDATE payments
+       SET status = 'rejected',
+           status_detail = COALESCE(status_detail, 'expired')
+       WHERE id IN (?)`,
+      [paymentIds]
+    );
+
+    await conn.query(
+      `UPDATE orders
+       SET status = 'cancelled'
+       WHERE id IN (?)`,
+      [orderIds]
+    );
+
+    await conn.query(
+      `DELETE FROM tickets
+       WHERE order_id IN (?) AND is_used = 0`,
+      [orderIds]
+    );
   } catch (err: any) {
     if (isMissingMercadoPagoColumns(err)) return;
     throw err;
   }
-
-  await conn.query(
-    `DELETE t
-     FROM tickets t
-     JOIN payments p ON p.order_id = t.order_id
-     JOIN orders o ON o.id = t.order_id
-     WHERE p.method = 'pix'
-       AND p.status = 'rejected'
-       AND o.status = 'cancelled'
-       AND t.is_used = 0`
-  );
 };
 
 export const finalizeTicketOrder = async (conn: any, orderId: number): Promise<void> => {
@@ -115,16 +132,15 @@ export const finalizeTicketOrder = async (conn: any, orderId: number): Promise<v
   }
 
   await conn.query(
-    `DELETE sr
-     FROM seat_reservations sr
-     JOIN tickets t
-       ON t.session_id = sr.session_id
-      AND t.seat_label = sr.seat_label
-     WHERE t.order_id = ?`,
+    `DELETE FROM seat_reservations sr
+     USING tickets t
+     WHERE t.order_id = ?
+       AND t.session_id = sr.session_id
+       AND t.seat_label = sr.seat_label`,
     [orderId]
   );
 
-  await conn.query('UPDATE orders SET status = "confirmed" WHERE id = ?', [orderId]);
+  await conn.query('UPDATE orders SET status = \'confirmed\' WHERE id = ?', [orderId]);
 };
 
 export const cancelTicketOrder = async (conn: any, orderId: number, detail = 'cancelled'): Promise<void> => {
@@ -145,7 +161,8 @@ export const cancelTicketOrder = async (conn: any, orderId: number, detail = 'ca
       [orderId]
     );
   }
-  await conn.query('UPDATE orders SET status = "cancelled" WHERE id = ? AND status = "pending"', [orderId]);
+
+  await conn.query('UPDATE orders SET status = \'cancelled\' WHERE id = ? AND status = \'pending\'', [orderId]);
   await conn.query(
     `DELETE FROM tickets
      WHERE order_id = ? AND is_used = 0`,

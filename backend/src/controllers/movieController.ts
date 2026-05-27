@@ -248,7 +248,7 @@ export const getAll = async (req: Request, res: Response): Promise<void> => {
     if (rating)   { query += ' AND m.rating = ?';      params.push(rating); }
     if (room)     { query += ' AND m.room_id = ?';     params.push(room); }
     // Filmes sem session_date ficam no final; demais ordenados por data
-    query += ' ORDER BY ISNULL(m.session_date) ASC, m.session_date ASC, m.session_time ASC';
+    query += ' ORDER BY m.session_date ASC NULLS LAST, m.session_time ASC NULLS LAST';
     const [rows] = await pool.query(query, params);
     res.json(rows);
   } catch (err: any) {
