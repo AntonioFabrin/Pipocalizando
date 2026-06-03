@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import pool from '../config/db';
 
+const DEFAULT_SESSION_TIME = '19:00';
+
 const normalizeDateForSql = (value: any): string | null => {
   if (!value) return null;
 
@@ -23,6 +25,65 @@ const normalizeDateForSql = (value: any): string | null => {
   return clean;
 };
 
+const todayForSql = (): string => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const chooseUpcomingSessionDate = (movie: any): string => {
+  const today = todayForSql();
+  const preferredDate = normalizeDateForSql(movie.session_date) || normalizeDateForSql(movie.premiere_date) || today;
+
+  return preferredDate < today ? today : preferredDate;
+};
+
+const ensureDefaultSessions = async (): Promise<void> => {
+  const [roomRows]: any = await pool.query(
+    'SELECT id, capacity FROM movie_rooms WHERE is_active = 1 ORDER BY id ASC LIMIT 1'
+  );
+
+  if (roomRows.length === 0) return;
+
+  const defaultRoom = roomRows[0];
+  const [movieRows]: any = await pool.query(`
+    SELECT m.id, m.room_id, m.session_date, m.session_time, m.premiere_date
+    FROM movies m
+    WHERE m.is_active = 1
+      AND m.status <> 'ended'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM movie_sessions ms
+        WHERE ms.movie_id = m.id
+          AND ms.is_active = 1
+      )
+  `);
+
+  for (const movie of movieRows) {
+    const roomId = Number(movie.room_id) || defaultRoom.id;
+    const sessionDate = chooseUpcomingSessionDate(movie);
+    const sessionTime = movie.session_time || DEFAULT_SESSION_TIME;
+    const availableSeats = defaultRoom.capacity || 100;
+
+    await pool.query(
+      `INSERT INTO movie_sessions (movie_id, room_id, session_date, session_time, available_seats, language)
+       VALUES (?, ?, ?, ?, ?, 'dublado')`,
+      [movie.id, roomId, sessionDate, sessionTime, availableSeats]
+    );
+
+    await pool.query(
+      `UPDATE movies
+       SET session_date = COALESCE(session_date, ?),
+           session_time = COALESCE(session_time, ?),
+           room_id = COALESCE(room_id, ?)
+       WHERE id = ?`,
+      [sessionDate, sessionTime, roomId, movie.id]
+    );
+  }
+};
+
 const syncPrimaryMovieSession = async (
   movieId: number,
   roomId: any,
@@ -34,6 +95,8 @@ const syncPrimaryMovieSession = async (
 
   if (!movieId || !Number.isInteger(normalizedRoomId) || !normalizedDate || !sessionTime) return;
 
+  const sessionDateForSql = normalizedDate < todayForSql() ? todayForSql() : normalizedDate;
+
   const [existingRows]: any = await pool.query(
     'SELECT id FROM movie_sessions WHERE movie_id = ? AND is_active = 1 ORDER BY id ASC LIMIT 1',
     [movieId]
@@ -42,7 +105,11 @@ const syncPrimaryMovieSession = async (
   if (existingRows.length > 0) {
     await pool.query(
       'UPDATE movie_sessions SET room_id = ?, session_date = ?, session_time = ? WHERE id = ?',
-      [normalizedRoomId, normalizedDate, sessionTime, existingRows[0].id]
+      [normalizedRoomId, sessionDateForSql, sessionTime, existingRows[0].id]
+    );
+    await pool.query(
+      'UPDATE movies SET session_date = ?, session_time = ?, room_id = ? WHERE id = ?',
+      [sessionDateForSql, sessionTime, normalizedRoomId, movieId]
     );
     return;
   }
@@ -50,7 +117,11 @@ const syncPrimaryMovieSession = async (
   await pool.query(
     `INSERT INTO movie_sessions (movie_id, room_id, session_date, session_time, available_seats, language)
      VALUES (?, ?, ?, ?, 100, 'dublado')`,
-    [movieId, normalizedRoomId, normalizedDate, sessionTime]
+    [movieId, normalizedRoomId, sessionDateForSql, sessionTime]
+  );
+  await pool.query(
+    'UPDATE movies SET session_date = ?, session_time = ?, room_id = ? WHERE id = ?',
+    [sessionDateForSql, sessionTime, normalizedRoomId, movieId]
   );
 };
 
@@ -162,6 +233,8 @@ export const deleteRoom = async (req: Request, res: Response): Promise<void> => 
 
 export const getSessions = async (_req: Request, res: Response): Promise<void> => {
   try {
+    await ensureDefaultSessions();
+
     const [rows] = await pool.query(`
       SELECT ms.*,
              m.title      AS movie_title,
@@ -273,6 +346,8 @@ export const getById = async (req: Request, res: Response): Promise<void> => {
       WHERE m.id = ? AND m.is_active = 1
     `, [req.params.id]);
     if (rows.length === 0) { res.status(404).json({ message: 'Filme não encontrado.' }); return; }
+    await ensureDefaultSessions();
+
     const [sessions] = await pool.query(`
       SELECT ms.*, mr.name AS room_name, mr.type AS room_type
       FROM movie_sessions ms

@@ -27,6 +27,7 @@ export interface Movie {
   category_id?: number;
   category_name?: string | null;
   room?: string | null;
+  room_id?: number | null;
   room_name?: string | null;
   status?: string;
   premiere_date?: string | null;

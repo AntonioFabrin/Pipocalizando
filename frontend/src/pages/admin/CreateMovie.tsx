@@ -15,6 +15,29 @@ import { UploadCloud, Film, Calendar, DollarSign, ArrowLeft, Loader2, UserRound 
 import { Button } from '../../components/ui/Button';
 import { hasRole, STAFF_ROLES } from '../../lib/roles';
 
+const getTodayInputDate = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const normalizeUpcomingInputDate = (value?: string | null) => {
+  const date = value?.split('T')[0] || '';
+  const today = getTodayInputDate();
+
+  if (!date) return today;
+  return date < today ? today : date;
+};
+
+interface MovieRoom {
+  id: number;
+  name: string;
+  capacity?: number;
+  type?: string;
+}
+
 export default function CreateMovie() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -30,6 +53,10 @@ export default function CreateMovie() {
   const [duration, setDuration] = useState('');
   const [premiereDate, setPremiereDate] = useState('');
   const [onDisplayUntil, setOnDisplayUntil] = useState('');
+  const [sessionDate, setSessionDate] = useState(getTodayInputDate());
+  const [sessionTime, setSessionTime] = useState('19:00');
+  const [roomId, setRoomId] = useState<number | ''>('');
+  const [roomsList, setRoomsList] = useState<MovieRoom[]>([]);
   const [director, setDirector] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
@@ -58,6 +85,21 @@ export default function CreateMovie() {
     fetchCategories();
   }, []);
 
+  useEffect(() => {
+    const fetchRooms = async () => {
+      try {
+        const list = await api.get<MovieRoom[]>('/movie-rooms');
+        console.log('[CreateMovie] Salas carregadas:', list);
+        setRoomsList(list);
+        setRoomId((current) => current || list[0]?.id || '');
+      } catch (err) {
+        console.error('[CreateMovie] Erro ao buscar salas:', err);
+      }
+    };
+
+    fetchRooms();
+  }, []);
+
   // Carrega os dados do filme para edição
   useEffect(() => {
     if (isEditMode && id) {
@@ -78,6 +120,16 @@ export default function CreateMovie() {
           }
           if (m.on_display_until) {
             setOnDisplayUntil(m.on_display_until.split('T')[0]);
+          }
+
+          if (m.session_date) {
+            setSessionDate(normalizeUpcomingInputDate(m.session_date));
+          }
+          if (m.session_time) {
+            setSessionTime(String(m.session_time).slice(0, 5));
+          }
+          if (m.room_id) {
+            setRoomId(Number(m.room_id));
           }
           
           setDirector(m.director || '');
@@ -174,6 +226,13 @@ export default function CreateMovie() {
         console.log('[CreateMovie] Nenhuma imagem selecionada');
       }
 
+      const selectedRoom = roomsList.find((room) => room.id === Number(roomId));
+      const effectiveSessionDate = sessionDate || normalizeUpcomingInputDate(premiereDate);
+
+      if (!effectiveSessionDate || !sessionTime || !roomId) {
+        throw new Error('Informe data, horario e sala da sessao para o filme aparecer em Sessoes.');
+      }
+
       // 2. Criar ou editar o filme com a URL da imagem retornada
       const movieData = {
         ...(isEditMode ? movieDetails : {}),
@@ -183,6 +242,10 @@ export default function CreateMovie() {
         rating,
         duration_minutes: duration ? parseInt(duration, 10) : null,
         director: director.trim() || null,
+        session_date: effectiveSessionDate,
+        session_time: sessionTime,
+        room_id: Number(roomId),
+        room: selectedRoom?.name || null,
         premiere_date: premiereDate || null,
         on_display_until: onDisplayUntil || null,
         description,
@@ -439,6 +502,69 @@ export default function CreateMovie() {
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:border-cinema-red/50 transition-colors text-white"
                     style={{ colorScheme: 'dark' }}
                   />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+              <div>
+                <span className="block text-xs font-bold uppercase tracking-widest text-cinema-red">
+                  Sessão para venda
+                </span>
+                <p className="mt-1 text-xs text-white/40">
+                  Esses dados criam o horário que aparece em Sessões e na reserva de ingressos.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold uppercase tracking-widest text-white/50">
+                    Data da Sessão *
+                  </label>
+                  <div className="relative">
+                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                    <input
+                      type="date"
+                      required
+                      value={sessionDate || normalizeUpcomingInputDate(premiereDate)}
+                      onChange={(e) => setSessionDate(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:border-cinema-red/50 transition-colors text-white"
+                      style={{ colorScheme: 'dark' }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold uppercase tracking-widest text-white/50">
+                    Horário *
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={sessionTime}
+                    onChange={(e) => setSessionTime(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-cinema-red/50 transition-colors text-white"
+                    style={{ colorScheme: 'dark' }}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold uppercase tracking-widest text-white/50">
+                    Sala *
+                  </label>
+                  <select
+                    required
+                    value={roomId}
+                    onChange={(e) => setRoomId(e.target.value ? Number(e.target.value) : '')}
+                    className="w-full bg-[#151515] border border-white/10 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-cinema-red/50 transition-colors text-white appearance-none"
+                  >
+                    <option value="">Selecione...</option>
+                    {roomsList.map((room) => (
+                      <option key={room.id} value={room.id}>
+                        {room.name}{room.type ? ` - ${room.type}` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
