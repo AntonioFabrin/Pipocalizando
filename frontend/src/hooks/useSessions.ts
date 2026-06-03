@@ -22,10 +22,13 @@ export interface Session {
   available_seats?: number;
 }
 
+const DEFAULT_TICKET_PRICE = 30;
+
 interface ApiSession {
   id: number;
   movie?: string;
   movie_id?: number;
+  movieId?: number;
   movie_title?: string;
   time?: string;
   session_time?: string;
@@ -64,13 +67,13 @@ const normalizeTime = (value?: string) => {
 const normalizeSession = (session: ApiSession): Session => ({
   id: session.id,
   movie: session.movie || session.movie_title || 'Filme sem titulo',
-  movie_id: session.movie_id,
+  movie_id: session.movie_id || session.movieId,
   time: normalizeTime(session.time || session.session_time),
   room: session.room_name || session.room || 'Sala a definir',
   lang: session.lang || session.language || 'dublado',
   type: session.type || session.room_type || 'standard',
   date: normalizeDate(session.date || session.session_date),
-  price: session.price === undefined ? undefined : Number(session.price),
+  price: Number(session.price) > 0 ? Number(session.price) : DEFAULT_TICKET_PRICE,
   available_seats: session.available_seats,
 });
 

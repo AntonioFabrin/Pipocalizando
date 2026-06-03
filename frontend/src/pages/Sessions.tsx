@@ -7,7 +7,7 @@
 import { motion } from 'motion/react';
 import { Calendar, Clock, MapPin, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
@@ -59,7 +59,6 @@ const formatSessionDate = (value?: string) => {
 };
 
 export default function Sessions() {
-  const navigate = useNavigate();
   const { sessions, isLoading, error } = useSessions();
   const [search, setSearch] = useState('');
   const [activeDate, setActiveDate] = useState(0);
@@ -82,25 +81,18 @@ export default function Sessions() {
     });
   }, [activeDate, dateFilters, sessions, search]);
 
-  const goToDetails = (movieId?: number) => {
-    if (!movieId) return;
-    navigate(`/movies/${movieId}`);
-  };
-
-  const goToSeats = (session: (typeof sessions)[number]) => {
-    if (!session.movie_id) return;
-
+  const getSeatsPath = (session: (typeof sessions)[number]) => {
     const params = new URLSearchParams({
-      movieId: String(session.movie_id),
+      movieId: String(session.movie_id || 0),
       sessionId: String(session.id),
       movieTitle: session.movie,
       sessionDate: session.date || '',
       sessionTime: session.time || '',
       roomName: session.room || 'Sala a definir',
-      pricePerSeat: String(Number(session.price || 0)),
+      pricePerSeat: String(Number(session.price || 30)),
     });
 
-    navigate(`/seats?${params.toString()}`);
+    return `/seats?${params.toString()}`;
   };
 
   return (
@@ -188,23 +180,18 @@ export default function Sessions() {
                 </div>
 
                 <div className="flex items-center gap-4 w-full md:w-auto">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="flex-1 md:flex-none"
-                    disabled={!session.movie_id}
-                    onClick={() => goToDetails(session.movie_id)}
+                  <Link
+                    to={session.movie_id ? `/movies/${session.movie_id}` : '/catalog'}
+                    className="relative inline-flex items-center justify-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-cinema-red/50 overflow-hidden bg-transparent text-white hover:bg-white/5 px-3 py-1.5 text-xs flex-1 md:flex-none"
                   >
                     Ver Detalhes
-                  </Button>
-                  <Button
-                    variant="primary"
-                    className="flex-1 md:flex-none px-8"
-                    disabled={!session.movie_id || !session.price}
-                    onClick={() => goToSeats(session)}
+                  </Link>
+                  <Link
+                    to={getSeatsPath(session)}
+                    className="relative inline-flex items-center justify-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-cinema-red/50 overflow-hidden bg-cinema-red text-white hover:bg-cinema-red/90 shadow-[0_0_20px_-5px_rgba(229,9,20,0.5)] px-8 py-2.5 text-sm font-medium flex-1 md:flex-none"
                   >
                     Comprar
-                  </Button>
+                  </Link>
                 </div>
               </motion.div>
             ))

@@ -237,6 +237,8 @@ export const getSessions = async (_req: Request, res: Response): Promise<void> =
 
     const [rows] = await pool.query(`
       SELECT ms.*,
+             ms.id        AS id,
+             ms.movie_id  AS movie_id,
              m.title      AS movie_title,
              m.rating,
              m.price,
