@@ -7,6 +7,7 @@
 import { motion } from 'motion/react';
 import { Calendar, Clock, MapPin, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
@@ -58,6 +59,7 @@ const formatSessionDate = (value?: string) => {
 };
 
 export default function Sessions() {
+  const navigate = useNavigate();
   const { sessions, isLoading, error } = useSessions();
   const [search, setSearch] = useState('');
   const [activeDate, setActiveDate] = useState(0);
@@ -79,6 +81,27 @@ export default function Sessions() {
       return matchesDate && matchesSearch;
     });
   }, [activeDate, dateFilters, sessions, search]);
+
+  const goToDetails = (movieId?: number) => {
+    if (!movieId) return;
+    navigate(`/movies/${movieId}`);
+  };
+
+  const goToSeats = (session: (typeof sessions)[number]) => {
+    if (!session.movie_id) return;
+
+    const params = new URLSearchParams({
+      movieId: String(session.movie_id),
+      sessionId: String(session.id),
+      movieTitle: session.movie,
+      sessionDate: session.date || '',
+      sessionTime: session.time || '',
+      roomName: session.room || 'Sala a definir',
+      pricePerSeat: String(Number(session.price || 0)),
+    });
+
+    navigate(`/seats?${params.toString()}`);
+  };
 
   return (
     <motion.div
@@ -165,10 +188,21 @@ export default function Sessions() {
                 </div>
 
                 <div className="flex items-center gap-4 w-full md:w-auto">
-                  <Button variant="ghost" size="sm" className="flex-1 md:flex-none">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-1 md:flex-none"
+                    disabled={!session.movie_id}
+                    onClick={() => goToDetails(session.movie_id)}
+                  >
                     Ver Detalhes
                   </Button>
-                  <Button variant="primary" className="flex-1 md:flex-none px-8">
+                  <Button
+                    variant="primary"
+                    className="flex-1 md:flex-none px-8"
+                    disabled={!session.movie_id || !session.price}
+                    onClick={() => goToSeats(session)}
+                  >
                     Comprar
                   </Button>
                 </div>

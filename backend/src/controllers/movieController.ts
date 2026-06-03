@@ -239,6 +239,7 @@ export const getSessions = async (_req: Request, res: Response): Promise<void> =
       SELECT ms.*,
              m.title      AS movie_title,
              m.rating,
+             m.price,
              m.poster_url,
              m.room,
              mr.name      AS room_name,
