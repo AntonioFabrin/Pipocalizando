@@ -172,9 +172,9 @@ export default function Home() {
                 className="relative z-10 drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
               >
                 <img 
-                  src="https://images.unsplash.com/photo-1549421263-549463996f6e?q=80&w=2000&auto=format&fit=crop" 
+                  src="/images/popcorn-combo.png"
                   alt="Popcorn Combo" 
-                  className="rounded-3xl border border-white/10"
+                  className="w-full h-full object-cover rounded-3xl border border-white/10"
                 />
               </motion.div>
               <div className="absolute -inset-4 bg-cinema-red/20 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
